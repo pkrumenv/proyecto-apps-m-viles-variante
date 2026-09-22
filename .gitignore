@@ -1,5 +1,7 @@
 # Sistema operativo
 .DS_Store
+certs/*
+!certs/.gitkeep
 Thumbs.db
 
 # Editores e IDEs
@@ -12,8 +14,10 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+!.env.local.example
 *.pem
 credentials.json
+foodie-cookie.txt
 
 # Logs
 *.log
@@ -41,6 +45,10 @@ ENV/
 .coverage.*
 htmlcov/
 *.sqlite3
+<<<<<<< HEAD
+=======
+backend/var/media/
+>>>>>>> upstream/main
 
 # --- JavaScript / Node (PWA y frontend React) ---
 node_modules/
