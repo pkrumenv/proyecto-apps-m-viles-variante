@@ -167,3 +167,38 @@ checkApiButton.addEventListener("click", checkApi);
 
 checkApi();
 auth.restoreSession();
+
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      console.log('Service Worker registrado con éxito:', registration.scope);
+    } catch (error) {
+      console.error('Fallo el registro del Service Worker:', error);
+    }
+  });
+}
+
+// Función para actualizar el estado visual de la conexión
+function actualizarEstadoRed() {
+  const isOnline = navigator.onLine;
+  const statusElement = document.getElementById('network-status');
+
+  if (statusElement) {
+    if (isOnline) {
+      statusElement.textContent = '🟢 Conectado';
+      statusElement.className = 'status-online';
+    } else {
+      statusElement.textContent = '🔴 Desconectado (El contenido podría estar desactualizado)';
+      statusElement.className = 'status-offline';
+    }
+  }
+}
+
+// Escuchar cambios de conexión en tiempo real
+window.addEventListener('online', actualizarEstadoRed);
+window.addEventListener('offline', actualizarEstadoRed);
+
+// Ejecutar al cargar la app
+document.addEventListener('DOMContentLoaded', actualizarEstadoRed);

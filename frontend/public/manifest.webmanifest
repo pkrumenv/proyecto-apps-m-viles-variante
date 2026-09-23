@@ -1,0 +1,26 @@
+{
+  "id": "foodie-pwa-app",
+  "name": "Foodie - Reseñas de Platos",
+  "short_name": "Foodie",
+  "description": "Prueba de concepto PWA para compartir y consultar reseñas de restaurantes y platos.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
