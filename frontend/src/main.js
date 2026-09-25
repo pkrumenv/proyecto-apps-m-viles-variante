@@ -10,7 +10,10 @@ import {
   saveFeedSnapshot,
   getFeedSnapshot,
   clearOtherUsers,
+  cacheFeedPhotos,
+  buildOfflinePhotoUrlMap,
 } from "./offline-feed.js";
+import { cargarVistaResenaEspecifica } from "./review-detail.js";
 
 // --- Referencias DOM del Sistema Base (Autenticación y Restaurantes) ---
 const apiStatus = document.querySelector("#api-status");
@@ -50,6 +53,9 @@ const feedStatus = document.querySelector("#feed-status");
 const feedList = document.querySelector("#feed-list");
 const retryFeedButton = document.querySelector("#retry-feed");
 const reviewForm = document.querySelector("#review-form");
+
+const reviewDetailCard = document.querySelector("#review-detail-card");
+const reviewDetailContainer = document.querySelector("#review-detail-container");
 
 const currentOrigin = document.querySelector("#current-origin");
 
@@ -130,7 +136,11 @@ function renderRestaurants(state) {
 }
 
 // --- Renderizado de Items del Feed de Reseñas ---
-function createFeedCardItem(item) {
+// `photoMap`: Map opcional de `photo.content_url -> object URL` con blobs
+// persistidos en IndexedDB, usado únicamente al renderizar en modo offline
+// (ver offline-feed.js: buildOfflinePhotoUrlMap). Online, la imagen se pide
+// directamente a su URL relativa (misma cookie de sesión).
+function createFeedCardItem(item, { offline = false, photoMap = null } = {}) {
   const li = document.createElement("li");
   li.className = "feed-item";
 
@@ -161,19 +171,33 @@ function createFeedCardItem(item) {
 
   article.append(header, dishTitle, bodyText);
 
-  if (rev.photo_url || rev.image_url) {
-    const img = document.createElement("img");
-    img.src = rev.photo_url || rev.image_url;
-    img.alt = `Foto de ${rev.dish_name || "reseña"}`;
-    img.className = "feed-card-image";
-    article.append(img);
+  // Contrato real del backend (frontend/README.md): la foto vive en
+  // `photo.content_url`, no en `photo_url`/`image_url`.
+  const photoUrl = rev.photo?.content_url;
+  if (photoUrl) {
+    const offlineSrc = offline ? photoMap?.get(photoUrl) : null;
+    if (!offline || offlineSrc) {
+      const img = document.createElement("img");
+      img.src = offline ? offlineSrc : photoUrl;
+      img.alt = `Foto de ${rev.dish_name || "reseña"}`;
+      img.className = "feed-card-image";
+      article.append(img);
+    }
+  }
+
+  if (rev.id) {
+    const link = document.createElement("a");
+    link.href = `#review/${encodeURIComponent(rev.id)}`;
+    link.className = "feed-card-link";
+    link.textContent = "Ver reseña completa";
+    article.append(link);
   }
 
   li.append(article);
   return li;
 }
 
-function renderizarFeedEnDOM(items, esOffline = false, fechaActualizacion = null) {
+function renderizarFeedEnDOM(items, esOffline = false, fechaActualizacion = null, photoMap = null) {
   if (!feedList) return;
   feedList.replaceChildren();
 
@@ -191,7 +215,21 @@ function renderizarFeedEnDOM(items, esOffline = false, fechaActualizacion = null
     return;
   }
 
-  feedList.append(...items.map(createFeedCardItem));
+  feedList.append(
+    ...items.map((item) => createFeedCardItem(item, { offline: esOffline, photoMap })),
+  );
+}
+
+// Object URLs creados a partir de blobs de IndexedDB para mostrar fotos en
+// modo offline. Se revocan antes de crear el siguiente lote para no filtrar
+// memoria entre renders sucesivos del feed offline.
+let currentOfflinePhotoUrls = [];
+
+function revokeOfflinePhotoUrls() {
+  for (const url of currentOfflinePhotoUrls) {
+    URL.revokeObjectURL(url);
+  }
+  currentOfflinePhotoUrls = [];
 }
 
 // --- Carga del Feed Real (Online vs Snapshot Offline en IndexedDB) ---
@@ -219,7 +257,11 @@ async function cargarFeedReal(userId) {
       // Guardar snapshot local y limpiar otros usuarios
       await saveFeedSnapshot(userId, items, data.next_cursor);
       await clearOtherUsers(userId);
+      // Descarga best-effort de las fotos para que la copia offline del
+      // feed no muestre imágenes rotas (ver offline-feed.js).
+      cacheFeedPhotos(userId, items).catch(() => {});
 
+      revokeOfflinePhotoUrls();
       renderizarFeedEnDOM(items, false);
       if (feedStatus) showStatus(feedStatus, `Feed actualizado con ${items.length} reseñas.`, "success");
       return;
@@ -235,9 +277,13 @@ async function cargarFeedReal(userId) {
     const snapshot = await getFeedSnapshot(userId);
     if (snapshot && snapshot.items) {
       const fecha = snapshot.updatedAt ? new Date(snapshot.updatedAt).toLocaleString() : "desconocida";
-      renderizarFeedEnDOM(snapshot.items, true, fecha);
+      revokeOfflinePhotoUrls();
+      const photoMap = await buildOfflinePhotoUrlMap(snapshot.items);
+      currentOfflinePhotoUrls = [...photoMap.values()];
+      renderizarFeedEnDOM(snapshot.items, true, fecha, photoMap);
       if (feedStatus) showStatus(feedStatus, "Modo offline: mostrando copia local.", "warning");
     } else {
+      revokeOfflinePhotoUrls();
       feedList.replaceChildren();
       if (feedStatus) {
         showStatus(
@@ -431,5 +477,34 @@ if (typeof window !== "undefined") {
   updateNetworkBadge();
 }
 
+// --- Ruta hacia la vista de una reseña específica (#review/<id>) ---
+// La usan tanto el enlace "Ver reseña completa" del feed como el evento
+// `notificationclick` del service worker (ver public/sw.js), que navega a
+// esta misma URL con hash para abrir la reseña asociada a la notificación.
+function parseReviewIdFromHash() {
+  const match = window.location.hash.match(/^#review\/(.+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function applyRoute() {
+  const reviewId = parseReviewIdFromHash();
+  if (!reviewDetailCard) return;
+
+  if (reviewId) {
+    reviewDetailCard.hidden = false;
+    cargarVistaResenaEspecifica(reviewId, reviewDetailContainer, {
+      onBack: () => {
+        window.location.hash = "";
+      },
+      onUnauthorized: () => auth.invalidateSession(),
+    });
+  } else {
+    reviewDetailCard.hidden = true;
+  }
+}
+
+window.addEventListener("hashchange", applyRoute);
+
 checkApi();
 auth.restoreSession();
+applyRoute();

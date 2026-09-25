@@ -141,6 +141,76 @@ export async function getPhotoBlob(photoId) {
 }
 
 /**
+ * Descarga la foto de una reseña y la persiste como blob en IndexedDB, para
+ * que la copia offline del feed pueda mostrarla sin conexión.
+ *
+ * Usa la propia `content_url` de la foto como `photoId`: es relativa,
+ * estable y única por reseña (ver frontend/README.md, "Contrato para crear
+ * una reseña"). La foto requiere la misma cookie de sesión que el resto de
+ * `/api/*`, por lo que se pide con `credentials: "include"`.
+ *
+ * Es best-effort: si la descarga falla (sin conexión, 401, etc.) no lanza,
+ * simplemente esa foto no quedará disponible offline.
+ *
+ * @param {string} userId
+ * @param {string} photoUrl - `photo.content_url` devuelto por el backend
+ */
+export async function cacheReviewPhoto(userId, photoUrl) {
+  if (!userId || !photoUrl) return;
+  try {
+    const response = await fetch(photoUrl, { credentials: "include" });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    await savePhotoBlob(photoUrl, userId, blob, response.headers.get("content-type") || blob.type);
+  } catch {
+    // Descarga best-effort: si falla, el feed offline simplemente no
+    // tendrá esta foto disponible y se omitirá al renderizar.
+  }
+}
+
+/**
+ * Descarga y persiste, en paralelo y de forma best-effort, las fotos de
+ * todos los items de un feed recién obtenido online.
+ * @param {string} userId
+ * @param {unknown[]} items - los `items` devueltos por GET /api/v1/feed
+ */
+export async function cacheFeedPhotos(userId, items) {
+  if (!userId || !Array.isArray(items)) return;
+  await Promise.all(
+    items.map((item) => {
+      const rev = item.review || item;
+      return cacheReviewPhoto(userId, rev?.photo?.content_url);
+    }),
+  );
+}
+
+/**
+ * Construye, para un conjunto de items del feed, un mapa
+ * `photoId -> object URL` a partir de los blobs persistidos en IndexedDB.
+ * Se usa al renderizar el feed en modo offline. Las URLs devueltas deben
+ * revocarse (`URL.revokeObjectURL`) cuando ya no se necesiten, para evitar
+ * fugas de memoria.
+ * @param {unknown[]} items
+ * @returns {Promise<Map<string, string>>}
+ */
+export async function buildOfflinePhotoUrlMap(items) {
+  const map = new Map();
+  if (!Array.isArray(items)) return map;
+
+  await Promise.all(
+    items.map(async (item) => {
+      const rev = item.review || item;
+      const photoId = rev?.photo?.content_url;
+      if (!photoId || map.has(photoId)) return;
+      const blob = await getPhotoBlob(photoId);
+      if (blob) map.set(photoId, URL.createObjectURL(blob));
+    }),
+  );
+
+  return map;
+}
+
+/**
  * Elimina todo el contenido offline (feed + fotos) de un usuario.
  * Debe llamarse:
  *   - al completar un logout exitoso, y

@@ -18,6 +18,8 @@ const MESSAGES = Object.freeze({
   logout: "Cerrando la sesión en el backend…",
   loggedOut: "La sesión se cerró correctamente.",
   sessionLost: "La sesión caducó o fue revocada. Inicia sesión nuevamente.",
+  offlineLogin: "No hay conexión a Internet. Inicia sesión requiere estar online.",
+  offlineLogout: "No hay conexión a Internet. Cerrar sesión requiere estar online.",
 });
 
 function unavailableMessage(error) {
