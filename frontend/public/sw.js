@@ -1,23 +1,23 @@
-const CACHE_NAME = 'foodie-shell-v1';
-// Lista de recursos estáticos indispensables que conforman el App Shell
+const CACHE_NAME = 'foodie-shell-v3';
+
+// Recursos esenciales para la carga base
 const APP_SHELL_ASSETS = [
   '/',
-  '/index.html',
-  '/manifest.json',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  '/index.html'
 ];
 
-// 1. Instalación: Pre-cachear el App Shell
+// 1. Instalación: Guardar recursos tolerando fallos de archivos opcionales
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(APP_SHELL_ASSETS);
-    }).then(() => self.skipWaiting()) // Forzar activación de la nueva versión
+      return Promise.all(
+        APP_SHELL_ASSETS.map((asset) => cache.add(asset).catch(() => {}))
+      );
+    }).then(() => self.skipWaiting())
   );
 });
 
-// 2. Activación: Limpieza de cachés de versiones anteriores
+// 2. Activación: Limpieza de cachés antiguas
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -28,43 +28,69 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    }).then(() => self.clients.claim()) // Tomar control inmediato de las pestañas
+    }).then(() => self.clients.claim())
   );
 });
 
-// 3. Estrategia de Fetch: Manejar peticiones para modo Offline
+// 3. Estrategia de Fetch
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // IMPORTANTE: Las respuestas /api/* NO deben guardarse en Cache Storage (se manejan con IndexedDB)
-  if (url.pathname.startsWith('/api/')) {
-    return; // Permite que el navegador haga la petición normal a la red
+  // Ignorar peticiones a la API backend
+  if (url.pathname.startsWith('/api/')) return;
+
+  // Ignorar rutas internas del entorno de desarrollo de Vite
+  if (
+    url.pathname.startsWith('/@vite/') ||
+    url.pathname.startsWith('/@fs/') ||
+    url.search.includes('t=')
+  ) {
+    return;
   }
 
-  // Para el App Shell y estáticos: Estrategia Stale-While-Revalidate o Cache First
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Devuelve de caché y actualiza en segundo plano
-        fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-          }
-        }).catch(() => {/* Ignorar errores de red en segundo plano */});
-
         return cachedResponse;
       }
 
-      // Si no está en caché, va a la red
-      return fetch(event.request);
+      return fetch(event.request)
+        .then((networkResponse) => {
+          if (
+            !networkResponse ||
+            networkResponse.status !== 200 ||
+            event.request.method !== 'GET'
+          ) {
+            return networkResponse;
+          }
+
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+
+          return networkResponse;
+        })
+        .catch(() => {
+          // Si es navegación a página HTML, entregar index.html en caché
+          if (event.request.mode === 'navigate') {
+            return caches.match('/index.html') || caches.match('/');
+          }
+
+          // Respuesta de fallback válida para evitar "TypeError: Failed to convert value to Response"
+          return new Response('Recurso no disponible sin conexión', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({ 'Content-Type': 'text/plain' }),
+          });
+        });
     })
   );
 });
 
-// 4. Evento Push (Base para cuando implementen el Backend de notificaciones)
+// 4. Notificaciones Push
 self.addEventListener('push', (event) => {
   let data = { title: 'Nueva reseña', body: '¡Alguien publicó una nueva reseña de un plato!', url: '/' };
-  
   if (event.data) {
     try {
       data = event.data.json();
@@ -73,37 +99,29 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const options = {
-    body: data.body,
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-192x192.png',
-    data: { url: data.url || '/' }
-  };
-
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icons/icon-192x192.png',
+      data: { url: data.url || '/' }
+    })
   );
 });
 
-// 5. Evento Click en la Notificación
+// 5. Click en Notificación
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
   const targetUrl = event.notification.data.url;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Si ya hay una ventana abierta de la app, enfocarla y navegar
       for (let client of windowClients) {
         if ('focus' in client) {
           client.focus();
           return client.navigate(targetUrl);
         }
       }
-      // Si no hay ventanas abiertas, abrir una nueva
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
+      if (clients.openWindow) return clients.openWindow(targetUrl);
     })
   );
 });
