@@ -85,5 +85,18 @@ export function createApiClient(fetchImplementation = globalThis.fetch) {
         body: JSON.stringify(credentials),
       }),
     logout: () => request("/api/v1/auth/logout", { method: "POST" }),
+    push: {
+      vapidKey: () => request("/api/v1/push/vapid-key"),
+      subscribe: (subscription) =>
+        request("/api/v1/push/subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(subscription),
+        }),
+      unsubscribe: (endpoint) =>
+        request(`/api/v1/push/subscriptions?endpoint=${encodeURIComponent(endpoint)}`, {
+          method: "DELETE",
+        }),
+    },
   });
 }

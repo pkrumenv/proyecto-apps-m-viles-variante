@@ -61,6 +61,24 @@ restaurant_follows = Table(
     Column("restaurant_id", Uuid(as_uuid=True), primary_key=True),
 )
 Index("ix_restaurant_follows_restaurant_id", restaurant_follows.c.restaurant_id)
+push_subscriptions = Table(
+    "push_subscriptions",
+    metadata,
+    Column("id", Uuid(as_uuid=True), primary_key=True),
+    # Aurora DSQL's SQLAlchemy adapter omits foreign keys (see auth_sessions
+    # above); the application verifies user_id itself when subscribing.
+    Column("user_id", Uuid(as_uuid=True), nullable=False),
+    Column("endpoint", String(500), nullable=False, unique=True),
+    Column("p256dh", String(255), nullable=False),
+    Column("auth", String(255), nullable=False),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    ),
+)
+Index("ix_push_subscriptions_user_id", push_subscriptions.c.user_id)
 
 cuisine_styles = Table(
     "cuisine_styles",

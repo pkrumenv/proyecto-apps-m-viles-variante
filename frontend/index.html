@@ -102,6 +102,13 @@
               <dd><time id="session-expiration"></time></dd>
             </div>
           </dl>
+
+          <div id="push-controls">
+            <button id="push-subscribe" type="button" hidden>Activar notificaciones</button>
+            <button id="push-unsubscribe" type="button" hidden>Desactivar notificaciones</button>
+            <p id="push-status" class="status" role="status" aria-live="polite"></p>
+          </div>
+
           <button id="logout" type="button">Cerrar sesión</button>
         </div>
 
@@ -212,6 +219,20 @@
         >
           Cargando feed de reseñas…
         </p>
+      </section>
+
+      <!-- Vista de detalle de una reseña (feed o notificación push) -->
+      <section
+        id="review-detail-card"
+        class="card"
+        aria-labelledby="review-detail-title"
+        hidden
+      >
+        <div>
+          <p class="step">Detalle</p>
+          <h2 id="review-detail-title">Reseña</h2>
+        </div>
+        <div id="review-detail-container"></div>
       </section>
 
       <footer>

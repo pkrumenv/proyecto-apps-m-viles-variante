@@ -1,5 +1,5 @@
 import "./style.css";
-
+import { PUSH_STATES, createPushController } from "./push.js";
 import { createApiClient } from "./api.js";
 import { AUTH_STATES, createAuthController } from "./auth.js";
 import {
@@ -46,6 +46,10 @@ const restaurantPanels = {
   [RESTAURANT_STATES.EMPTY]: document.querySelector("#restaurants-empty"),
   [RESTAURANT_STATES.ERROR]: document.querySelector("#restaurants-error"),
 };
+
+const pushSubscribeButton = document.querySelector("#push-subscribe");
+const pushUnsubscribeButton = document.querySelector("#push-unsubscribe");
+const pushStatus = document.querySelector("#push-status");
 
 // --- Referencias DOM para Feed de Reseñas y Formulario ---
 const feedCard = document.querySelector("#feed-card");
@@ -300,6 +304,32 @@ async function cargarFeedReal(userId) {
   }
 }
 
+function renderPush(state) {
+  if (pushStatus) showStatus(pushStatus, state.message ?? "", state.status === PUSH_STATES.ERROR ? "error" : "neutral");
+
+  if (!pushSubscribeButton || !pushUnsubscribeButton) return;
+
+  if (state.status === PUSH_STATES.UNSUPPORTED || state.status === PUSH_STATES.DENIED) {
+    pushSubscribeButton.hidden = true;
+    pushUnsubscribeButton.hidden = true;
+    return;
+  }
+
+  const busy =
+    state.status === PUSH_STATES.SUBSCRIBING || state.status === PUSH_STATES.UNSUBSCRIBING;
+  const subscribed = state.status === PUSH_STATES.SUBSCRIBED;
+
+  pushSubscribeButton.hidden = subscribed;
+  pushUnsubscribeButton.hidden = !subscribed;
+  pushSubscribeButton.disabled = busy;
+  pushUnsubscribeButton.disabled = busy;
+}
+
+const push = createPushController({ api, onStateChange: renderPush });
+
+pushSubscribeButton?.addEventListener("click", () => push.subscribe());
+pushUnsubscribeButton?.addEventListener("click", () => push.unsubscribe());
+
 // --- Renderizado del Estado de Autenticación ---
 function renderAuth(state) {
   if (authCard) {
@@ -330,12 +360,15 @@ function renderAuth(state) {
     restaurants.load();
     if (state.session?.user?.id) {
       cargarFeedReal(state.session.user.id);
+      push.refresh();
     }
   } else {
     if (restaurantsCard) restaurantsCard.hidden = true;
     if (feedCard) feedCard.hidden = true;
     restaurants.reset();
     if (feedList) feedList.replaceChildren();
+    if (pushSubscribeButton) pushSubscribeButton.hidden = true;
+    if (pushUnsubscribeButton) pushUnsubscribeButton.hidden = true;
   }
 }
 
@@ -374,7 +407,12 @@ loginForm?.addEventListener("submit", async (event) => {
   }
 });
 
-logoutButton?.addEventListener("click", () => auth.logout());
+logoutButton?.addEventListener("click", async () => {
+  if (push.state?.status === PUSH_STATES.SUBSCRIBED) {
+    await push.unsubscribe().catch(() => {});
+  }
+  await auth.logout();
+});
 retrySessionButton?.addEventListener("click", () => auth.restoreSession());
 retryRestaurantsButton?.addEventListener("click", () => restaurants.load());
 retryFeedButton?.addEventListener("click", () => {
