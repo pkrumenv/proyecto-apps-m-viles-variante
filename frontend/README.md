@@ -20,12 +20,19 @@ consumo de una colección protegida:
 - `GET /healthz`, para comprobar la conectividad;
 - `GET /api/v1/auth/session`, para reconstruir la interfaz al cargar la página;
 - `POST /api/v1/auth/login`, para iniciar una sesión;
-- `GET /api/v1/restaurants?limit=20&offset=0`, para mostrar la primera página de
-  restaurantes únicamente después de confirmar la sesión; y
+- `GET /api/v1/restaurants?limit=20`, que responde `{ items, next_cursor }`,
+  para mostrar la primera página de restaurantes únicamente después de
+  confirmar la sesión; y
 - `POST /api/v1/auth/logout`, para revocarla y eliminar la cookie.
 
 No incluye `manifest`, `service worker`, soporte offline ni instalación como
 PWA. Esos elementos forman parte del trabajo de los grupos en la entrega 2.
+
+**El contrato completo de la API, organizado por épica, está en
+[backend/docs/api.md](../backend/docs/api.md).** Ahí está qué recibe y qué
+devuelve cada endpoint, y las decisiones del backend que cambian lo que el
+cliente tiene que escribir: la paginación por cursor, la regla de visibilidad,
+las formas que se repiten y el reparto entre `404` y `422`.
 
 ## Contrato de feed para la Entrega 2
 
@@ -126,41 +133,68 @@ Los valores del backend se asignan con `textContent` y se estructuran con
 por qué [`textContent`](https://developer.mozilla.org/docs/Web/API/Node/textContent)
 es apropiado para tratar la respuesta como texto y no como markup ejecutable.
 
-## Contrato para crear una reseña
+## Contrato para publicar una fotografía y reseñarla
 
-El esqueleto no implementa el formulario de reseña: construir esa experiencia
-es parte de la entrega. El backend ya ofrece `POST /api/v1/reviews` autenticado
-y recibe `restaurant_id`, `dish_name`, `text` y una única `photo` como
-`multipart/form-data`. En JavaScript se construye con
+El esqueleto no implementa ninguno de los dos formularios: construir esa
+experiencia es parte de la entrega. Son **dos pasos** que la interfaz puede
+encadenar, porque publicar la foto de un plato es una acción completa y
+reseñarla es otra.
+
+Primero la fotografía. `POST /api/v1/photos` es autenticado y recibe
+`restaurant_id`, `kind`, `dish_name`, `visibility`, el archivo y un `caption`
+opcional como `multipart/form-data`, que en JavaScript se construye con
 [`FormData`](https://developer.mozilla.org/docs/Web/API/FormData):
 
 ```js
 const body = new FormData();
 body.append("restaurant_id", restaurantId);
+body.append("kind", "dish");
 body.append("dish_name", dishName);
-body.append("text", reviewText);
+body.append("visibility", "public");
 body.append("photo", fileInput.files[0]);
 
-const response = await fetch("/api/v1/reviews", {
+const photo = await fetch("/api/v1/photos", {
   method: "POST",
   credentials: "include",
   body,
-});
+}).then((response) => response.json());
 ```
 
 No definas el header `Content-Type` manualmente: el navegador debe agregar el
 `boundary` propio de ese `FormData`. Antes de enviar, la interfaz puede ayudar
 comprobando que exista exactamente un archivo y que su tipo/tamaño estén dentro
 del contrato documentado, pero el backend siempre repite la validación. La
-respuesta incluye `photo.content_url`, que es relativa, estable y requiere la
-misma cookie; así funciona con localhost, IP, mDNS, el futuro subdominio y
+respuesta incluye `content_url`, que es relativa, estable y requiere la misma
+cookie; así funciona con localhost, IP, mDNS, el subdominio del grupo y
 CloudFront sin incrustar hosts en el código.
+
+Después la reseña, sobre esa fotografía, en JSON:
+
+```js
+await fetch("/api/v1/reviews", {
+  method: "POST",
+  credentials: "include",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    photo_id: photo.id,
+    rating: 4,
+    text: reviewText,
+    visibility: "public",
+  }),
+});
+```
+
+La reseña la escribe quien tomó la fotografía, y nunca puede ser más visible
+que ella: privada sobre una foto pública se acepta, pública sobre una privada
+responde `422`. Para subir varias fotografías del menú o de las instalaciones
+en un mismo acto, repite el mismo `upload_group` en cada solicitud.
 
 La misma convención sirve para las siguientes etapas:
 
 - **Entrega 3:** nginx sirve el build estático de React en `/` y mantiene el
   proxy `/api/*` hacia el backend del monolito Docker, bajo el subdominio del
-  grupo en `4203.iccuandes.org`.
+  grupo en `4203.iccuandes.org`. El procedimiento está en
+  [DEPLOY.md](../DEPLOY.md).
 - **Entrega 4:** CloudFront usa el build estático como origen predeterminado y
   un comportamiento `/api/*` hacia API Gateway y Lambda. CloudFront permite
   [varios orígenes y routing por path](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/DownloadDistValuesCacheBehavior.html).
@@ -188,7 +222,7 @@ La API sigue disponible directamente en <http://localhost:8000> para
 diagnóstico, pero el frontend no debe construir URLs con ese puerto.
 
 Para abrir la aplicación desde un teléfono con HTTPS, sigue la guía de
-[HTTPS local y acceso desde un teléfono](../backend/README.md#https-local-y-acceso-desde-un-teléfono).
+[HTTPS local y acceso desde un teléfono](../backend/docs/https-local.md).
 Los puntos de entrada serán `https://localhost:5173` en el computador y, por
 ejemplo, `https://192.168.1.40:5173` desde otro dispositivo.
 
