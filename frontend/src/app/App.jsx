@@ -50,6 +50,7 @@ import {
 } from "react-router-dom";
 
 import { ApiError } from "../api.js";
+import GoogleRestaurantMap from "./GoogleRestaurantMap.jsx";
 import { createPushController, PUSH_STATES } from "../push.js";
 import {
   buildOfflinePhotoUrlMap,
@@ -612,11 +613,13 @@ function ExplorePage() {
   const [locationMode, setLocationMode] = useState("current");
   const [coordinates, setCoordinates] = useState(null);
   const [radius, setRadius] = useState(10);
+  const [mapVisible, setMapVisible] = useState(false);
+  const [mapCenter, setMapCenter] = useState(null);
   const [state, setState] = useState({ status: "idle", items: [], error: "" });
   useEffect(() => { const controller = new AbortController(); api.cuisineStyles({ signal: controller.signal }).then(setCatalogue).catch((e) => !controller.signal.aborted && setState({ status: "error", items: [], error: e.message })); return () => controller.abort(); }, [api]);
   const locate = () => {
     if (!navigator.geolocation) { setState({ status: "error", items: [], error: "Este navegador no permite consultar la ubicación." }); return; }
-    navigator.geolocation.getCurrentPosition(({ coords }) => { setCoordinates({ latitude: coords.latitude, longitude: coords.longitude }); setLocationMode("current"); }, () => { setCoordinates(null); setState({ status: "error", items: [], error: "Sin permiso de ubicación: activa el permiso o busca por nombre." }); }, { enableHighAccuracy: true, timeout: 10000 });
+    navigator.geolocation.getCurrentPosition(({ coords }) => { setCoordinates({ latitude: coords.latitude, longitude: coords.longitude }); setMapCenter({ lat: coords.latitude, lng: coords.longitude }); setLocationMode("current"); }, () => { setCoordinates(null); setState({ status: "error", items: [], error: "Sin permiso de ubicación: activa el permiso o busca por nombre." }); }, { enableHighAccuracy: true, timeout: 10000 });
   };
   const search = async (event) => {
     event?.preventDefault(); setState({ status: "loading", items: [], error: "" });
@@ -624,6 +627,8 @@ function ExplorePage() {
       if (advanced && coordinates) {
         const result = await api.nearby({ ...coordinates, radius: radius * 1000, cuisineStyles: styles });
         setState({ status: result.items.length ? "ready" : "empty", items: result.items, error: result.truncated ? "Hay más resultados; reduce el radio o selecciona más estilos." : "" });
+        setMapCenter({ lat: coordinates.latitude, lng: coordinates.longitude });
+        setMapVisible(true);
       } else {
         if (query.trim().length < 2) throw new Error("Escribe al menos dos caracteres para buscar.");
         const result = await api.restaurants({ q: query.trim(), limit: 50 });
@@ -631,7 +636,7 @@ function ExplorePage() {
       }
     } catch (error) { setState({ status: "error", items: [], error: error.message }); }
   };
-  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1" className="page-heading">Explorar</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar restaurante o estilo" value={query} onChange={(e) => setQuery(e.target.value)} /><Button type="submit" variant="contained">Buscar por conceptos clave</Button></Box><Button onClick={() => setAdvanced((value) => !value)}>{advanced ? "Ocultar búsqueda avanzada" : "Búsqueda avanzada"}</Button>{advanced && <Card><CardContent><Stack spacing={2}><FormControl fullWidth><Typography variant="body2">Estilos de comida</Typography><Select multiple value={styles} onChange={(e) => setStyles(e.target.value)}>{catalogue.map((style) => <MenuItem key={style.slug} value={style.slug}>{style.name}</MenuItem>)}</Select></FormControl><Typography>Ubicación: {locationMode === "current" ? "mi ubicación actual" : "dirección añadida"}</Typography><Button onClick={locate}>Usar mi ubicación actual</Button><TextField label="Dirección" disabled={!coordinates} helperText="La búsqueda por dirección requiere geocodificación; por ahora usa tu ubicación actual." /><Typography>Radio: {radius} km</Typography><Slider min={1} max={50} value={radius} onChange={(_, value) => setRadius(value)} aria-label="Radio de búsqueda en kilómetros" /><Button variant="contained" disabled={!coordinates} onClick={search}>Buscar cerca</Button></Stack></CardContent></Card>}<Button variant="outlined" disabled={!coordinates} onClick={() => setState({ status: "error", items: [], error: "La vista cartográfica requiere configurar la clave de Google Maps." })}>Explorar el mapa</Button>{state.status === "loading" && <BusyState label="Buscando restaurantes…" />}{state.status === "empty" && <Alert severity="info">Sin resultados.</Alert>}{state.status === "error" && <Alert severity="warning">{state.error}</Alert>}{state.items.map((restaurant) => <Card key={restaurant.id} onClick={() => navigate(`/restaurants/${restaurant.id}`)} sx={{ cursor: "pointer" }}><CardContent><Typography variant="h3">{restaurant.name}</Typography><Typography color="text.secondary">{restaurant.address}{restaurant.distance_m ? ` · ${(restaurant.distance_m / 1000).toFixed(1)} km` : ""}</Typography><Typography>{restaurant.cuisine_styles?.map((style) => style.name).join(" · ")}</Typography></CardContent></Card>)}</Stack></Container>;
+  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1" className="page-heading">Explorar</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar restaurante o estilo" value={query} onChange={(e) => setQuery(e.target.value)} /><Button type="submit" variant="contained">Buscar por conceptos clave</Button></Box><Button onClick={() => setAdvanced((value) => !value)}>{advanced ? "Ocultar búsqueda avanzada" : "Búsqueda avanzada"}</Button>{advanced && <Card><CardContent><Stack spacing={2}><FormControl fullWidth><Typography variant="body2">Estilos de comida</Typography><Select multiple value={styles} onChange={(e) => setStyles(e.target.value)}>{catalogue.map((style) => <MenuItem key={style.slug} value={style.slug}>{style.name}</MenuItem>)}</Select></FormControl><Typography>Ubicación: {locationMode === "current" ? "mi ubicación actual" : "dirección añadida"}</Typography><Button onClick={locate}>Usar mi ubicación actual</Button><TextField label="Dirección" disabled={!coordinates} helperText="La búsqueda por dirección requiere geocodificación; por ahora usa tu ubicación actual." /><Typography>Radio: {radius} km</Typography><Slider min={1} max={50} value={radius} onChange={(_, value) => setRadius(value)} aria-label="Radio de búsqueda en kilómetros" /><Button variant="contained" disabled={!coordinates} onClick={search}>Buscar cerca</Button></Stack></CardContent></Card>}<Button variant="outlined" onClick={() => setMapVisible((visible) => !visible)}>{mapVisible ? "Ocultar mapa" : "Explorar el mapa"}</Button>{mapVisible && <GoogleRestaurantMap api={api} restaurants={state.items} center={mapCenter} onBoundsResults={(items) => setState({ status: items.length ? "ready" : "empty", items, error: "" })} onOpenRestaurant={(id) => navigate(`/restaurants/${id}`)} />}{state.status === "loading" && <BusyState label="Buscando restaurantes…" />}{state.status === "empty" && <Alert severity="info">Sin resultados.</Alert>}{state.status === "error" && <Alert severity="warning">{state.error}</Alert>}{state.items.map((restaurant) => <Card key={restaurant.id} onClick={() => navigate(`/restaurants/${restaurant.id}`)} sx={{ cursor: "pointer" }}><CardContent><Typography variant="h3">{restaurant.name}</Typography><Typography color="text.secondary">{restaurant.address}{restaurant.distance_m ? ` · ${(restaurant.distance_m / 1000).toFixed(1)} km` : ""}</Typography><Typography>{restaurant.cuisine_styles?.map((style) => style.name).join(" · ")}</Typography></CardContent></Card>)}</Stack></Container>;
 }
 
 function ProfilePage() {

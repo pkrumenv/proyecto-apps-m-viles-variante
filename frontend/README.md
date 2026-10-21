@@ -252,6 +252,19 @@ npm install
 npm run dev
 ```
 
+Para explorar el mapa localmente, crea `frontend/.env.local` y define la clave
+restringida para desarrollo:
+
+```dotenv
+VITE_GOOGLE_MAPS_API_KEY=tu_clave_de_desarrollo
+```
+
+Reinicia Vite después de cambiar variables `VITE_*`. La clave se entrega al
+navegador, así que debe tener restricciones de sitio autorizando el origen
+local y no debe ser una clave privada de servidor. Sin clave, la búsqueda por
+nombre y el resto de la aplicación siguen disponibles; el mapa muestra un
+mensaje de configuración.
+
 Abre <http://localhost:5173>. Detén primero el gateway de Compose, porque ambos
 usan el mismo puerto del host. Durante el desarrollo, Vite también hace proxy
 de los paths del backend hacia `http://localhost:8000`; este proxy no forma
