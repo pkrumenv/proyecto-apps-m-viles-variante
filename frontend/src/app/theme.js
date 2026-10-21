@@ -5,11 +5,11 @@ import { createTheme } from "@mui/material/styles";
 export const theme = createTheme({
   palette: {
     mode: "light",
-    primary: { main: "#285b3b", dark: "#1e472d", light: "#dcebdd", contrastText: "#ffffff" },
-    secondary: { main: "#a34e2f", light: "#e8975e", contrastText: "#ffffff" },
-    background: { default: "#f3f5ef", paper: "#ffffff" },
-    text: { primary: "#17221b", secondary: "#536057" },
-    divider: "#d7ddd2",
+    primary: { main: "#456633", dark: "#365128", light: "#dce8cf", contrastText: "#ffffff" },
+    secondary: { main: "#1976d2", dark: "#135eaa", light: "#e4f0fc", contrastText: "#ffffff" },
+    background: { default: "#ffffff", paper: "#ffffff" },
+    text: { primary: "#202020", secondary: "#626262" },
+    divider: "#e2e2e2",
     error: { main: "#7c271d", light: "#f6dfda" },
     success: { main: "#174b2b", light: "#dcebdd" },
   },
@@ -28,8 +28,8 @@ export const theme = createTheme({
     MuiCard: {
       styleOverrides: {
         root: {
-          border: "1px solid #d7ddd2",
-          boxShadow: "0 12px 36px rgb(30 52 37 / 8%)",
+          border: "1px solid #e2e2e2",
+          boxShadow: "0 3px 12px rgb(0 0 0 / 8%)",
         },
       },
     },

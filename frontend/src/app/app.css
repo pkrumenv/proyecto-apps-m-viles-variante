@@ -17,7 +17,7 @@ a {
 .page-content {
   width: min(100% - 32px, 960px);
   margin: 0 auto;
-  padding: 28px 0 56px;
+  padding: 28px 0 104px;
 }
 
 .page-heading {
@@ -42,5 +42,6 @@ a {
   .page-content {
     width: min(100% - 24px, 960px);
     padding-top: 20px;
+    padding-bottom: 104px;
   }
 }
