@@ -1,9 +1,6 @@
-<<<<<<< HEAD
 import logging
 from typing import Annotated, NoReturn
-=======
 from typing import Annotated, Literal, NoReturn
->>>>>>> upstream/main
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status

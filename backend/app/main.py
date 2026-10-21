@@ -37,12 +37,9 @@ app.include_router(photos_router, prefix="/api/v1")
 app.include_router(photo_comments_router, prefix="/api/v1")
 app.include_router(comments_router, prefix="/api/v1")
 app.include_router(feed_router, prefix="/api/v1")
-<<<<<<< HEAD
 app.include_router(push_router, prefix="/api/v1")
-=======
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(visits_router, prefix="/api/v1")
->>>>>>> upstream/main
 
 
 @app.get(

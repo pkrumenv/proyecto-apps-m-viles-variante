@@ -1156,7 +1156,7 @@ Es la evolución evidente para un despliegue real.
 
 ## Fuera de las épicas
 
-Dos cosas que el backend expone y que ninguna épica pide.
+Tres cosas que el backend expone y que ninguna épica pide.
 
 ### CRUD de restaurantes
 
@@ -1175,6 +1175,17 @@ existe responde `409`, igual que al crear.
 > eliminar cualquier restaurante.** Esa simplificación permite practicar el
 > CRUD, pero **no es un modelo de autorización apropiado para producción**:
 > roles, ownership y moderación quedan para una evolución posterior.
+
+### Suscripciones de Web Push
+
+| Método y path | Sesión | Resultado |
+| --- | --- | --- |
+| `GET /api/v1/push/vapid-key` | no | Clave pública VAPID con la que el navegador se suscribe. `503` si el despliegue no la tiene configurada. |
+| `POST /api/v1/push/subscriptions` | sí | Registra la suscripción de esta instalación. `201`. |
+| `DELETE /api/v1/push/subscriptions?endpoint=…` | sí | Elimina la suscripción de esta instalación. `204`. |
+
+Son del grupo, no del código base. El emisor que las usa se conecta a la
+resolución de destinatarios en `backend/app/services/notifications.py`.
 
 ### Salud del servicio
 

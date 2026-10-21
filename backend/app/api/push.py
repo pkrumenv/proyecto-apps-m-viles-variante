@@ -11,7 +11,12 @@ from app.services.auth import AuthenticatedSession
 router = APIRouter(prefix="/push", tags=["push"])
 
 
-@router.get("/vapid-key", response_model=VapidKeyResponse)
+@router.get(
+    "/vapid-key",
+    response_model=VapidKeyResponse,
+    summary="Publish the public VAPID key the browser subscribes with",
+    responses={200: {"description": "The public VAPID key."}},
+)
 def vapid_key():
     if not settings.vapid_public_key:
         raise HTTPException(
@@ -25,6 +30,8 @@ def vapid_key():
     "/subscriptions",
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_trusted_origin)],
+    summary="Register this installation to receive notifications",
+    responses={201: {"description": "The subscription was stored."}},
 )
 def subscribe(
     data: PushSubscriptionRequest,
@@ -49,6 +56,8 @@ def subscribe(
     "/subscriptions",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(require_trusted_origin)],
+    summary="Remove this installation's subscription",
+    responses={204: {"description": "The subscription was removed."}},
 )
 def unsubscribe(
     session: Annotated[AuthenticatedSession, Depends(get_current_session)],

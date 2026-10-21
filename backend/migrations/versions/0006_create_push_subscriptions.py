@@ -2,7 +2,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0006_create_push_subscriptions"
-down_revision = "0005_create_follows"
+down_revision = "0109_create_comments"
 branch_labels = None
 depends_on = None
 
