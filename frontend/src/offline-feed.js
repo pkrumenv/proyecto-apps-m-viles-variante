@@ -113,6 +113,18 @@ export async function getFeedSnapshot(userId) {
 }
 
 /**
+ * Returns the latest saved feed for an offline, read-only session bootstrap.
+ * The app keeps one user's snapshot at a time and clears it on logout.
+ */
+export async function getLatestFeedSnapshot() {
+  if (typeof indexedDB === "undefined") return null;
+  const db = await openDatabase();
+  const tx = db.transaction(FEED_STORE, "readonly");
+  const snapshots = await requestToPromise(tx.objectStore(FEED_STORE).getAll());
+  return snapshots.sort((left, right) => (right.updatedAt || "").localeCompare(left.updatedAt || ""))[0] ?? null;
+}
+
+/**
  * Guarda el blob de una foto de reseña, asociado al usuario cuyo feed la
  * referencia (para poder borrarla junto con ese usuario).
  * @param {string} photoId
@@ -155,10 +167,14 @@ export async function getPhotoBlob(photoId) {
  * @param {string} userId
  * @param {string} photoUrl - `photo.content_url` devuelto por el backend
  */
-export async function cacheReviewPhoto(userId, photoUrl) {
+export async function cacheReviewPhoto(userId, photoUrl, onUnauthorized = () => {}) {
   if (!userId || !photoUrl) return;
   try {
     const response = await fetch(photoUrl, { credentials: "include" });
+    if (response.status === 401) {
+      onUnauthorized();
+      return;
+    }
     if (!response.ok) return;
     const blob = await response.blob();
     await savePhotoBlob(photoUrl, userId, blob, response.headers.get("content-type") || blob.type);
@@ -168,18 +184,29 @@ export async function cacheReviewPhoto(userId, photoUrl) {
   }
 }
 
+function activityPhotoUrls(item) {
+  const type = item?.type;
+  const details = type ? item[type] : item?.review || item;
+  if (!details) return [];
+  const photos = type === "review" || (!type && details.photo)
+    ? [details.photo]
+    : details.photos || [];
+  return photos.map((photo) => photo?.content_url).filter(Boolean);
+}
+
 /**
  * Descarga y persiste, en paralelo y de forma best-effort, las fotos de
  * todos los items de un feed recién obtenido online.
  * @param {string} userId
  * @param {unknown[]} items - los `items` devueltos por GET /api/v1/feed
  */
-export async function cacheFeedPhotos(userId, items) {
+export async function cacheFeedPhotos(userId, items, onUnauthorized = () => {}) {
   if (!userId || !Array.isArray(items)) return;
   await Promise.all(
     items.map((item) => {
-      const rev = item.review || item;
-      return cacheReviewPhoto(userId, rev?.photo?.content_url);
+      return Promise.all(activityPhotoUrls(item).map((photoUrl) =>
+        cacheReviewPhoto(userId, photoUrl, onUnauthorized),
+      ));
     }),
   );
 }
@@ -198,10 +225,8 @@ export async function buildOfflinePhotoUrlMap(items) {
   if (!Array.isArray(items)) return map;
 
   await Promise.all(
-    items.map(async (item) => {
-      const rev = item.review || item;
-      const photoId = rev?.photo?.content_url;
-      if (!photoId || map.has(photoId)) return;
+    items.flatMap((item) => activityPhotoUrls(item)).map(async (photoId) => {
+      if (map.has(photoId)) return;
       const blob = await getPhotoBlob(photoId);
       if (blob) map.set(photoId, URL.createObjectURL(blob));
     }),

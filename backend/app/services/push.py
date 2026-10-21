@@ -5,23 +5,20 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from pywebpush import WebPushException, webpush
-from sqlalchemy import delete, insert, select, union
+from sqlalchemy import delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import settings
 from app.db.retry import run_transaction_with_retry
-from app.db.schema import push_subscriptions, restaurant_follows, restaurants, user_follows
+from app.db.schema import push_subscriptions
 from app.db.session import engine
+from app.services.notifications import ActivityNotification
 
 logger = logging.getLogger(__name__)
 
 
 class PushStoreError(Exception):
     """Push subscription metadata could not be persisted or queried."""
-
-
-class PushNotConfiguredError(Exception):
-    """VAPID keys are not configured on this deployment."""
 
 
 @dataclass(frozen=True)
@@ -105,67 +102,69 @@ def _delete_subscription_by_endpoint(endpoint: str) -> None:
         logger.exception("Could not remove expired push subscription")
 
 
-def _subscriptions_for_interested_users(*, author_id: UUID, restaurant_id: UUID, exclude_user_id: UUID):
-    """Subscriptions of everyone who would see this review in their feed.
+_ACTIVITY_COPY = {
+    "visit": ("Nueva visita", "Alguien que sigues registró una visita."),
+    "photo": ("Nueva foto", "Alguien que sigues publicó fotos."),
+    "evaluation": ("Nueva evaluación", "Alguien que sigues evaluó un restaurante."),
+}
 
-    Mirrors services/feed.py's visibility rule: people who follow the
-    review's author, or who follow the restaurant, minus the author
-    themselves (no self-notifications).
-    """
-    interested_user_ids = union(
-        select(user_follows.c.follower_id).where(user_follows.c.followed_id == author_id),
-        select(restaurant_follows.c.user_id).where(
-            restaurant_follows.c.restaurant_id == restaurant_id
-        ),
+
+def _activity_url(notification: ActivityNotification) -> str:
+    """Return a client-side route that the React router can open directly."""
+    if notification.type == "photo":
+        # Photos may be published as one group whose activity id is not an
+        # individual photo id. The feed is the stable, addressable view.
+        return f"/feed?activity={notification.id}"
+
+    route = {"visit": "visits", "review": "reviews", "evaluation": "evaluations"}.get(
+        notification.type, "feed"
     )
-    statement = select(push_subscriptions).where(
-        push_subscriptions.c.user_id.in_(interested_user_ids),
-        push_subscriptions.c.user_id != exclude_user_id,
-    )
-    with engine.connect() as connection:
-        return connection.execute(statement).mappings().all()
+    return f"/{route}/{notification.id}"
 
 
-def _restaurant_name(restaurant_id: UUID) -> str | None:
-    statement = select(restaurants.c.name).where(restaurants.c.id == restaurant_id)
-    with engine.connect() as connection:
-        return connection.scalar(statement)
+def send_activity_notification(notification: ActivityNotification) -> None:
+    """Deliver one resolved activity to the recipients' active subscriptions.
 
-
-def notify_review_created(
-    *,
-    review_id: UUID,
-    author_id: UUID,
-    author_name: str,
-    restaurant_id: UUID,
-    dish_name: str,
-) -> None:
-    """Best-effort push fan-out after a review is published.
-
-    Notification delivery is never allowed to fail review creation: every
-    error here is logged and swallowed by the caller's perspective (this
-    function itself raises nothing except PushNotConfiguredError, which the
-    caller is expected to catch too).
+    `notifications.notify` has already applied visibility, follow rules,
+    author exclusion, and recipient deduplication. This function only maps
+    those recipient ids to this group's Web Push subscriptions.
     """
+    if not notification.recipients:
+        return
+    if notification.type == "review":
+        logger.debug("Reviews do not generate push notifications; skipping %s", notification.id)
+        return
     if not settings.vapid_public_key or not settings.vapid_private_key:
-        raise PushNotConfiguredError
-
-    try:
-        subscriptions = _subscriptions_for_interested_users(
-            author_id=author_id, restaurant_id=restaurant_id, exclude_user_id=author_id
-        )
-        if not subscriptions:
-            return
-        restaurant_name = _restaurant_name(restaurant_id) or "un restaurante"
-    except SQLAlchemyError:
-        logger.exception("Could not look up push data for review %s", review_id)
+        logger.info("Web Push is disabled; skipping %s %s", notification.type, notification.id)
         return
 
+    if notification.type not in _ACTIVITY_COPY:
+        logger.warning("No Web Push copy configured for activity type %s", notification.type)
+        return
+
+    try:
+        statement = select(push_subscriptions).where(
+            push_subscriptions.c.user_id.in_(notification.recipients)
+        )
+        with engine.connect() as connection:
+            subscriptions = connection.execute(statement).mappings().all()
+    except SQLAlchemyError:
+        logger.exception(
+            "Could not look up subscriptions for %s %s", notification.type, notification.id
+        )
+        return
+
+    if not subscriptions:
+        return
+
+    title, body = _ACTIVITY_COPY[notification.type]
     payload = json.dumps(
         {
-            "title": f"{author_name} publicó una reseña",
-            "body": f"{dish_name} en {restaurant_name}",
-            "url": f"/#review/{review_id}",
+            "title": title,
+            "body": body,
+            "url": _activity_url(notification),
+            "type": notification.type,
+            "id": str(notification.id),
         }
     )
 
@@ -184,11 +183,19 @@ def notify_review_created(
                 vapid_claims={"sub": settings.vapid_subject},
             )
         except WebPushException as error:
-            status_code = getattr(error.response, "status_code", None)
+            status_code = getattr(getattr(error, "response", None), "status_code", None)
             if status_code in (404, 410):
-                # The push service confirms this endpoint no longer exists.
                 _delete_subscription_by_endpoint(subscription["endpoint"])
             else:
-                logger.warning("Push delivery failed for review %s: %s", review_id, error)
+                logger.warning(
+                    "Push delivery failed for %s %s: %s",
+                    notification.type,
+                    notification.id,
+                    error,
+                )
         except Exception:
-            logger.exception("Unexpected error delivering push for review %s", review_id)
+            logger.exception(
+                "Unexpected error delivering push for %s %s",
+                notification.type,
+                notification.id,
+            )

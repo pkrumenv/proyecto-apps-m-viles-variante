@@ -1,127 +1,100 @@
-const CACHE_NAME = 'foodie-shell-v3';
+// CACHE_NAME and APP_SHELL_ASSETS are filled from the production output by
+// scripts/generate-sw.js. The empty defaults keep the Vite dev server valid.
+const CACHE_NAME = "foodie-shell-dev";
+const APP_SHELL_ASSETS = [];
 
-// Recursos esenciales para la carga base
-const APP_SHELL_ASSETS = [
-  '/',
-  '/index.html'
-];
-
-// 1. Instalación: Guardar recursos tolerando fallos de archivos opcionales
-self.addEventListener('install', (event) => {
+self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return Promise.all(
-        APP_SHELL_ASSETS.map((asset) => cache.add(asset).catch(() => {}))
-      );
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then((cache) => Promise.all(APP_SHELL_ASSETS.map((asset) => cache.add(asset).catch(() => {}))))
+      .then(() => self.skipWaiting()),
   );
 });
 
-// 2. Activación: Limpieza de cachés antiguas
-self.addEventListener('activate', (event) => {
+self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cache) => {
-          if (cache !== CACHE_NAME) {
-            return caches.delete(cache);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then((cacheNames) => Promise.all(
+        cacheNames.filter((name) => name.startsWith("foodie-shell-") && name !== CACHE_NAME)
+          .map((name) => caches.delete(name)),
+      ))
+      .then(() => self.clients.claim()),
   );
 });
 
-// 3. Estrategia de Fetch
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
 
-  // Ignorar peticiones a la API backend
-  if (url.pathname.startsWith('/api/')) return;
-
-  // Ignorar rutas internas del entorno de desarrollo de Vite
-  if (
-    url.pathname.startsWith('/@vite/') ||
-    url.pathname.startsWith('/@fs/') ||
-    url.search.includes('t=')
-  ) {
-    return;
-  }
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  if (url.pathname.startsWith("/@vite/") || url.pathname.startsWith("/@fs/") || url.search.includes("t=")) return;
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(event.request)
-        .then((networkResponse) => {
-          if (
-            !networkResponse ||
-            networkResponse.status !== 200 ||
-            event.request.method !== 'GET'
-          ) {
-            return networkResponse;
-          }
-
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-
-          return networkResponse;
-        })
-        .catch(() => {
-          // Si es navegación a página HTML, entregar index.html en caché
-          if (event.request.mode === 'navigate') {
-            return caches.match('/index.html') || caches.match('/');
-          }
-
-          // Respuesta de fallback válida para evitar "TypeError: Failed to convert value to Response"
-          return new Response('Recurso no disponible sin conexión', {
-            status: 503,
-            statusText: 'Service Unavailable',
-            headers: new Headers({ 'Content-Type': 'text/plain' }),
-          });
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
+      return fetch(request).then((networkResponse) => {
+        if (!networkResponse || networkResponse.status !== 200) return networkResponse;
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
+        return networkResponse;
+      }).catch(() => {
+        if (request.mode === "navigate") {
+          return caches.match("/index.html").then((response) => response || caches.match("/"));
+        }
+        return new Response("Recurso no disponible sin conexión", {
+          status: 503,
+          statusText: "Service Unavailable",
+          headers: { "Content-Type": "text/plain" },
         });
-    })
+      });
+    }),
   );
 });
 
-// 4. Notificaciones Push
-self.addEventListener('push', (event) => {
-  let data = { title: 'Nueva reseña', body: '¡Alguien publicó una nueva reseña de un plato!', url: '/' };
+self.addEventListener("push", (event) => {
+  let data = {
+    title: "Nueva actividad",
+    body: "Hay una actividad nueva en tu comunidad.",
+    url: "/feed",
+  };
   if (event.data) {
     try {
-      data = event.data.json();
-    } catch (e) {
+      data = { ...data, ...event.data.json() };
+    } catch {
       data.body = event.data.text();
     }
   }
 
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: '/icons/icon-192x192.png',
-      data: { url: data.url || '/' }
-    })
-  );
+  event.waitUntil(self.registration.showNotification(data.title, {
+    body: data.body,
+    icon: "/icons/icon-192x192.png",
+    data: { url: data.url || "/feed" },
+  }));
 });
 
-// 5. Click en Notificación
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data.url;
+  const target = new URL(event.notification.data?.url || "/feed", self.location.origin);
+  const targetUrl = target.origin === self.location.origin
+    ? `${target.pathname}${target.search}${target.hash}`
+    : "/feed";
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (let client of windowClients) {
-        if ('focus' in client) {
-          client.focus();
-          return client.navigate(targetUrl);
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      const sameOriginClient = windowClients.find((client) => {
+        try {
+          return new URL(client.url).origin === self.location.origin;
+        } catch {
+          return false;
         }
+      });
+
+      if (sameOriginClient) {
+        sameOriginClient.postMessage({ type: "NAVIGATE", url: targetUrl });
+        return sameOriginClient.focus();
       }
-      if (clients.openWindow) return clients.openWindow(targetUrl);
-    })
+      return self.clients.openWindow(`${self.location.origin}${targetUrl}`);
+    }),
   );
 });

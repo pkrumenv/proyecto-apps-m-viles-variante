@@ -3,12 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Punto de partida del frontend Foodie" />
+    <meta name="description" content="Foodie: comparte experiencias y descubre restaurantes." />
+    <meta name="theme-color" content="#285b3b" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" href="/icons/icon-192x192.png" />
-    <title>Foodie · Sesión, restaurantes y reseñas</title>
+    <title>Foodie · Restaurantes y experiencias</title>
   </head>
   <body>
+    <div id="app-root"></div>
+    <!-- Se conserva el markup de la entrega 2 mientras las pantallas pasan a React. -->
+    <div id="legacy-app" hidden>
     <!-- Banner de estado de red superior -->
     <div id="network-status" class="network-badge">🟢 Online</div>
 
@@ -239,6 +243,7 @@
         <p>Origen actual: <code id="current-origin"></code></p>
       </footer>
     </main>
-    <script type="module" src="/src/main.js"></script>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

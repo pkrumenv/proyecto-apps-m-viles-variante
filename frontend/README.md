@@ -1,11 +1,23 @@
-# Frontend
+# Frontend: Vite, React y PWA
 
-Este directorio contiene la aplicación cliente del proyecto, que los grupos desarrollan a lo largo del semestre.
+La aplicación activa usa React, React Router y MUI sobre Vite. `src/main.jsx`
+monta el router y el contexto compartido de sesión; `src/app/theme.js` es el
+único theme MUI. Los módulos `api.js` y `offline-feed.js` conservan el contrato
+relativo `/api/v1`, las cookies de sesión y el snapshot offline asociado a una
+cuenta.
 
-* **Entrega 2**: una PWA (_Progressive Web Application_) construida con HTML, CSS y JavaScript, que consume los _endpoints_ del backend entregado por el equipo docente. El foco está en el consumo de la API y en las capacidades propias de una PWA (_manifest_, _service worker_, instalación en el dispositivo, funcionamiento sin conexión).
-* **Entrega 3**: la implementación completa del frontend con React, sobre el diseño elaborado en la entrega 1.
+`npm run build` compila Vite y luego genera el precache del service worker a
+partir de los archivos producidos en `dist/`. El clic de una notificación envía
+un mensaje al cliente abierto para que React Router navegue sin recargar la app.
 
-Los enunciados de cada entrega, en el directorio [`docs`](../docs), precisan el alcance del trabajo y los criterios de evaluación. Reemplacen el contenido de este archivo por las instrucciones de instalación y ejecución de su aplicación a medida que la desarrollen.
+Las entregas anteriores dejaron el prototipo vanilla en `src/main.js` y el
+markup anterior bajo `#legacy-app` mientras se migra la interfaz.
+
+## Ejecución local
+
+Desde este directorio instala las dependencias con `npm ci` y ejecuta `npm run
+dev`. Para producción, usa `npm run build`; el resultado queda en `dist/`.
+
 # Frontend: Vite, HTML y JavaScript
 
 Este directorio contiene el punto de partida de la aplicación cliente. En la

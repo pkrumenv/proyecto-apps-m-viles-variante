@@ -1,5 +1,3 @@
-import logging
-from typing import Annotated, NoReturn
 from typing import Annotated, Literal, NoReturn
 from uuid import UUID
 
@@ -10,8 +8,6 @@ from app.api.dependencies import get_current_session, require_trusted_origin
 from app.schemas.reviews import ReviewResponse
 from app.services import reviews as review_service
 from app.services.auth import AuthenticatedSession
-from app.services import push as push_service
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -104,18 +100,5 @@ def create(
         _raise_http_error(error)
 
     response.headers["Location"] = f"/api/v1/reviews/{review.id}"
-
-    try:
-        push_service.notify_review_created(
-            review_id=review.id,
-            author_id=session.user_id,
-            author_name=session.name,
-            restaurant_id=review.restaurant_id,
-            dish_name=review.dish_name,
-        )
-    except push_service.PushNotConfiguredError:
-        pass  # Deployment sin VAPID configurado; no hay nada que enviar.
-    except Exception:
-        logger.exception("Push notification fan-out failed for review %s", review.id)
 
     return review

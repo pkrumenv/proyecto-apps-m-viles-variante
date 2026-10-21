@@ -17,8 +17,13 @@ from app.api.users import router as users_router
 from app.api.visits import router as visits_router
 from app.core.config import settings
 from app.api.push import router as push_router
+from app.services.notifications import set_notifier
+from app.services.push import send_activity_notification
 
 app = FastAPI(title="Foodie API", version="0.1.0")
+# Install at module startup. Mangum runs with lifespan disabled in Lambda, so
+# this also makes the emitter available on cold starts and warm invocations.
+set_notifier(send_activity_notification)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
