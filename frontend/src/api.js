@@ -91,6 +91,55 @@ export function createApiClient(
     return payload;
   }
 
+  function uploadWithProgress(path, formData, { signal, onProgress } = {}) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let settled = false;
+      const cleanup = () => signal?.removeEventListener("abort", abort);
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback(value);
+      };
+      const abort = () => xhr.abort();
+
+      if (signal?.aborted) {
+        finish(reject, new DOMException("La carga fue cancelada.", "AbortError"));
+        return;
+      }
+
+      xhr.open("POST", path);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("Accept", "application/json");
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) {
+          onProgress?.({ loaded: event.loaded, total: event.total, percent: Math.round((event.loaded / event.total) * 100) });
+        }
+      });
+      xhr.addEventListener("load", () => {
+        let payload = null;
+        if (xhr.getResponseHeader("content-type")?.includes("application/json")) {
+          try { payload = JSON.parse(xhr.responseText); } catch { payload = null; }
+        }
+        if (xhr.status === 401) {
+          try { onUnauthorized({ status: 401, payload }); } catch { /* Keep the HTTP error. */ }
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          finish(reject, new ApiError(errorDetail(payload, `HTTP ${xhr.status}`), {
+            kind: "http", status: xhr.status, payload,
+          }));
+          return;
+        }
+        finish(resolve, payload);
+      });
+      xhr.addEventListener("error", () => finish(reject, new ApiError("No fue posible conectar con el backend.", { kind: "network" })));
+      xhr.addEventListener("abort", () => finish(reject, new DOMException("La carga fue cancelada.", "AbortError")));
+      signal?.addEventListener("abort", abort, { once: true });
+      xhr.send(formData);
+    });
+  }
+
   return Object.freeze({
     health: ({ signal } = {}) => request("/healthz", { signal }),
     session: ({ signal } = {}) => request("/api/v1/auth/session", { signal }),
@@ -162,7 +211,7 @@ export function createApiClient(
       request(`/api/v1/evaluations/${encodeURIComponent(evaluationId)}`, { signal }),
     photo: (photoId, { signal } = {}) =>
       request(`/api/v1/photos/${encodeURIComponent(photoId)}`, { signal }),
-    uploadPhoto: (formData, { signal } = {}) => request("/api/v1/photos", { method: "POST", signal, body: formData }),
+    uploadPhoto: (formData, options = {}) => uploadWithProgress("/api/v1/photos", formData, options),
     createReview: (payload, { signal } = {}) => request("/api/v1/reviews", {
       method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     }),

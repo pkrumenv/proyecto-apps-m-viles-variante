@@ -12,6 +12,7 @@ import {
   CircularProgress,
   Container,
   Divider,
+  LinearProgress,
   FormControl,
   FormControlLabel,
   Checkbox,
@@ -540,6 +541,22 @@ function CheckInPage() {
   return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Typography variant="h1">Check in</Typography>{success && <Alert severity="success">Check-in exitoso. Volviendo a la ficha…</Alert>}{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack"><TextField label="Fecha y hora de la visita (opcional)" type="datetime-local" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} InputLabelProps={{ shrink: true }} /><TextField select label="Visibilidad" value={visibility} onChange={(e) => setVisibility(e.target.value)}><MenuItem value="public">Pública</MenuItem><MenuItem value="private">Privada</MenuItem></TextField><Button variant="contained" type="submit" disabled={success}>Confirmar</Button></Box></Stack></Container>;
 }
 
+const MAX_PHOTOS_PER_GROUP = 10;
+const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
+const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function validatePhotoFiles(files) {
+  if (!files.length) return "Selecciona al menos una fotografía.";
+  if (files.length > MAX_PHOTOS_PER_GROUP) return `Puedes publicar hasta ${MAX_PHOTOS_PER_GROUP} fotografías a la vez.`;
+  const invalidType = files.find((file) => !PHOTO_TYPES.has(file.type));
+  if (invalidType) return `${invalidType.name}: usa una imagen JPEG, PNG o WebP.`;
+  const emptyFile = files.find((file) => file.size === 0);
+  if (emptyFile) return `${emptyFile.name}: el archivo está vacío.`;
+  const oversized = files.find((file) => file.size > MAX_PHOTO_SIZE);
+  if (oversized) return `${oversized.name}: supera el límite de 10 MiB.`;
+  return "";
+}
+
 function UploadPhotosPage() {
   const { api } = useSession();
   const { id } = useParams();
@@ -549,25 +566,49 @@ function UploadPhotosPage() {
   const [caption, setCaption] = useState("");
   const [visibility, setVisibility] = useState("public");
   const [files, setFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  useEffect(() => {
+    const urls = files.map((file) => URL.createObjectURL(file));
+    setPreviews(urls);
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [files]);
+  const selectFiles = (event) => {
+    const selected = Array.from(event.target.files || []);
+    setFiles(selected);
+    setError(validatePhotoFiles(selected));
+    setUploadProgress(null);
+    event.target.value = "";
+  };
   const submit = async (event) => {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault(); setError("");
+    const validationError = validatePhotoFiles(files);
+    if (validationError) { setError(validationError); return; }
+    setBusy(true);
     try {
-      if (!files.length) throw new Error("Selecciona al menos una fotografía.");
       const group = files.length > 1 ? crypto.randomUUID() : "";
       const created = [];
-      for (const file of files) {
+      const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+      let completedBytes = 0;
+      for (const [index, file] of files.entries()) {
         const body = new FormData(); body.append("restaurant_id", id); body.append("kind", kind); body.append("visibility", visibility); body.append("photo", file);
         if (kind === "dish") body.append("dish_name", dishName.trim());
         if (caption.trim()) body.append("caption", caption.trim()); if (group) body.append("upload_group", group);
-        created.push(await api.uploadPhoto(body));
+        setUploadProgress({ percent: Math.round(completedBytes / totalBytes * 100), index, count: files.length, fileName: file.name });
+        created.push(await api.uploadPhoto(body, { onProgress: ({ loaded, total }) => {
+          const fraction = total ? Math.min(1, loaded / total) : 0;
+          setUploadProgress({ percent: Math.round((completedBytes + file.size * fraction) / totalBytes * 100), index, count: files.length, fileName: file.name });
+        } }));
+        completedBytes += file.size;
+        setUploadProgress({ percent: Math.round(completedBytes / totalBytes * 100), index, count: files.length, fileName: file.name });
       }
       navigate(kind === "dish" ? `/photos/${created[0].id}` : `/restaurants/${id}`, { replace: true });
     } catch (cause) { setError(cause.message); }
     finally { setBusy(false); }
   };
-  return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Button component={RouterLink} to={`/restaurants/${id}`} startIcon={<ArrowBackIcon />}>Volver a la ficha</Button><Typography variant="h1">Subir fotos</Typography>{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack"><TextField select label="Tipo" value={kind} onChange={(event) => setKind(event.target.value)}><MenuItem value="dish">Plato</MenuItem><MenuItem value="menu">Menú</MenuItem><MenuItem value="venue">Instalaciones</MenuItem></TextField>{kind === "dish" && <TextField label="¿Qué plato es?" required value={dishName} onChange={(event) => setDishName(event.target.value)} />}{kind !== "dish" && <TextField label="Descripción (opcional)" value={caption} onChange={(event) => setCaption(event.target.value)} /> }<Button component="label" variant="outlined">Seleccionar imágenes<input hidden type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} /></Button><Typography>{files.map((file) => file.name).join(" · ") || "Sin imágenes seleccionadas"}</Typography><TextField select label="Visibilidad" value={visibility} onChange={(event) => setVisibility(event.target.value)}><MenuItem value="public">Pública</MenuItem><MenuItem value="private">Privada</MenuItem></TextField><Button variant="contained" type="submit" disabled={busy}>{busy ? "Publicando…" : "Publicar"}</Button></Box></Stack></Container>;
+  return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Button component={RouterLink} to={`/restaurants/${id}`} startIcon={<ArrowBackIcon />}>Volver a la ficha</Button><Typography variant="h1">Subir fotos</Typography><Typography color="text.secondary">JPEG, PNG o WebP; hasta {MAX_PHOTOS_PER_GROUP} imágenes de {MAX_PHOTO_SIZE / 1024 / 1024} MiB cada una.</Typography>{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack"><TextField select label="Tipo" value={kind} onChange={(event) => setKind(event.target.value)}><MenuItem value="dish">Plato</MenuItem><MenuItem value="menu">Menú</MenuItem><MenuItem value="venue">Instalaciones</MenuItem></TextField>{kind === "dish" && <TextField label="¿Qué plato es?" required value={dishName} onChange={(event) => setDishName(event.target.value)} />}{kind !== "dish" && <TextField label="Descripción (opcional)" value={caption} onChange={(event) => setCaption(event.target.value)} /> }<Button component="label" variant="outlined" disabled={busy}>Seleccionar imágenes<input hidden type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={selectFiles} /></Button>{files.length > 0 && <><Typography>{files.length} de {MAX_PHOTOS_PER_GROUP} imágenes · {(files.reduce((sum, file) => sum + file.size, 0) / 1024 / 1024).toFixed(2)} MiB</Typography><Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 1 }}>{files.map((file, index) => <Box key={`${file.name}-${file.lastModified}-${index}`} component="img" src={previews[index]} alt={`Vista previa: ${file.name}`} title={file.name} sx={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 1 }} />)}</Box></>}{files.length === 0 && <Typography color="text.secondary">Sin imágenes seleccionadas</Typography>}{uploadProgress && <Stack spacing={0.5} role="status" aria-live="polite"><Typography variant="body2">Subiendo {uploadProgress.index + 1}/{uploadProgress.count}: {uploadProgress.fileName} · {uploadProgress.percent}%</Typography><LinearProgress variant="determinate" value={uploadProgress.percent} aria-label="Progreso de carga de fotos" /></Stack>}<TextField select label="Visibilidad" value={visibility} onChange={(event) => setVisibility(event.target.value)} disabled={busy}><MenuItem value="public">Pública</MenuItem><MenuItem value="private">Privada</MenuItem></TextField><Button variant="contained" type="submit" disabled={busy || !files.length}>{busy ? "Publicando…" : "Publicar"}</Button></Box></Stack></Container>;
 }
 
 function EvaluateRestaurantPage() {
@@ -699,13 +740,16 @@ function ProfilePage() {
 }
 
 function NotificationsPage() {
-  const { api } = useSession();
+  const { api, state: session } = useSession();
+  const currentUserId = session.session?.user?.id;
   const [query, setQuery] = useState("");
   const queryRef = useRef(""); queryRef.current = query.trim();
   const [searchVersion, setSearchVersion] = useState(0);
   const [state, setState] = useState({ status: "idle", users: [], error: "" });
   const [nextCursor, setNextCursor] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [busyFollowIds, setBusyFollowIds] = useState(() => new Set());
+  const [followError, setFollowError] = useState("");
   const moreControllerRef = useRef(null);
   useEffect(() => {
     const term = query.trim();
@@ -717,27 +761,47 @@ function NotificationsPage() {
       try {
         const page = await api.users({ q: term, limit: 20, signal: controller.signal });
         if (!controller.signal.aborted && queryRef.current === term) {
-          setState({ status: page.items.length ? "ready" : "empty", users: page.items || [], error: "" });
+          const users = (page.items || []).filter((person) => person.id !== currentUserId);
+          setState({ status: users.length ? "ready" : "empty", users, error: "" });
           setNextCursor(page.next_cursor || null);
         }
       } catch (error) { if (!controller.signal.aborted && queryRef.current === term) setState({ status: "error", users: [], error: error.message }); }
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [api, query, searchVersion]);
+  }, [api, currentUserId, query, searchVersion]);
   const search = (event) => { event.preventDefault(); if (query.trim().length >= 2) setSearchVersion((version) => version + 1); };
+  const toggleFollow = async (person) => {
+    if (person.id === currentUserId) return;
+    if (busyFollowIds.has(person.id)) return;
+    setFollowError("");
+    setBusyFollowIds((current) => new Set(current).add(person.id));
+    try {
+      if (person.following) await api.unfollowUser(person.handle);
+      else await api.followUser(person.handle);
+      setState((current) => ({
+        ...current,
+        users: current.users.map((user) => user.id === person.id ? { ...user, following: !person.following } : user),
+      }));
+    } catch (error) {
+      setFollowError(error.message);
+    } finally {
+      setBusyFollowIds((current) => { const next = new Set(current); next.delete(person.id); return next; });
+    }
+  };
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     const term = query.trim(); const controller = new AbortController(); moreControllerRef.current = controller; setLoadingMore(true);
     try {
       const page = await api.users({ q: term, cursor: nextCursor, limit: 20, signal: controller.signal });
       if (!controller.signal.aborted && queryRef.current === term) {
-        setState((current) => ({ ...current, status: "ready", users: [...current.users, ...page.items] }));
+        const users = (page.items || []).filter((person) => person.id !== currentUserId);
+        setState((current) => ({ ...current, status: "ready", users: [...current.users, ...users] }));
         setNextCursor(page.next_cursor || null);
       }
     } catch (error) { if (!controller.signal.aborted && queryRef.current === term) setState((current) => ({ ...current, status: "error", error: error.message })); }
     finally { if (moreControllerRef.current === controller) { moreControllerRef.current = null; setLoadingMore(false); } }
   };
-  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1">Notificaciones</Typography><PushPreferences /><Typography variant="h2">Buscar personas</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar por @handle" value={query} onChange={(e) => setQuery(e.target.value)} required inputProps={{ minLength: 2 }} helperText="Los resultados aparecen mientras escribes; ingresa al menos dos caracteres." /><Button variant="contained" type="submit" disabled={query.trim().length < 2}>Buscar</Button></Box>{state.status === "loading" && <BusyState label="Buscando personas…" />}{state.status === "empty" && <Alert severity="info">@{query} no encontrado.</Alert>}{state.status === "error" && <Alert severity="error">{state.error}</Alert>}{state.users.map((person) => <Card key={person.id} component={RouterLink} to={`/profile/${person.handle}`} sx={{ textDecoration: "none" }}><CardContent><Typography variant="h3">@{person.handle}</Typography><Typography color="text.secondary">{person.name}</Typography></CardContent></Card>)}{nextCursor && <Button variant="outlined" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Cargando…" : "Cargar más personas"}</Button>}</Stack></Container>;
+  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1">Notificaciones</Typography><PushPreferences /><Typography variant="h2">Buscar personas</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar por @handle" value={query} onChange={(e) => setQuery(e.target.value)} required inputProps={{ minLength: 2 }} helperText="Los resultados aparecen mientras escribes; ingresa al menos dos caracteres." /><Button variant="contained" type="submit" disabled={query.trim().length < 2}>Buscar</Button></Box>{state.status === "loading" && <BusyState label="Buscando personas…" />}{state.status === "empty" && <Alert severity="info">Sin resultados para @{query}.</Alert>}{state.status === "error" && <Alert severity="error">{state.error}</Alert>}{followError && <Alert severity="error">{followError}</Alert>}{state.users.map((person) => <Card key={person.id}><CardContent><Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}><Box component={RouterLink} to={`/profile/${person.handle}`} sx={{ color: "inherit", textDecoration: "none", flex: 1, minWidth: 0 }}><Typography variant="h3">@{person.handle}</Typography><Typography color="text.secondary">{person.name}</Typography></Box><Button variant={person.following ? "outlined" : "contained"} onClick={() => toggleFollow(person)} disabled={person.id === currentUserId || busyFollowIds.has(person.id)}>{busyFollowIds.has(person.id) ? "Actualizando…" : person.following ? "Dejar de seguir" : "Seguir"}</Button></Stack></CardContent></Card>)}{nextCursor && <Button variant="outlined" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Cargando…" : "Cargar más personas"}</Button>}</Stack></Container>;
 }
 
 function ActivityPage({ activityType }) {
