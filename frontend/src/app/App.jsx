@@ -607,6 +607,12 @@ function ExplorePage() {
   const { api } = useSession();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const queryRef = useRef("");
+  queryRef.current = query.trim();
+  const [searchVersion, setSearchVersion] = useState(0);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const moreControllerRef = useRef(null);
   const [advanced, setAdvanced] = useState(false);
   const [styles, setStyles] = useState([]);
   const [catalogue, setCatalogue] = useState([]);
@@ -617,26 +623,66 @@ function ExplorePage() {
   const [mapCenter, setMapCenter] = useState(null);
   const [state, setState] = useState({ status: "idle", items: [], error: "" });
   useEffect(() => { const controller = new AbortController(); api.cuisineStyles({ signal: controller.signal }).then(setCatalogue).catch((e) => !controller.signal.aborted && setState({ status: "error", items: [], error: e.message })); return () => controller.abort(); }, [api]);
+  useEffect(() => {
+    const term = query.trim();
+    moreControllerRef.current?.abort();
+    setLoadingMore(false);
+    setNextCursor(null);
+    if (term.length < 2) {
+      setState({ status: "idle", items: [], error: "" });
+      return undefined;
+    }
+    const controller = new AbortController();
+    setState({ status: "loading", items: [], error: "" });
+    const timer = setTimeout(async () => {
+      try {
+        const page = await api.restaurants({ q: term, limit: 20, signal: controller.signal });
+        if (!controller.signal.aborted && queryRef.current === term) {
+          setState({ status: page.items.length ? "ready" : "empty", items: page.items || [], error: "" });
+          setNextCursor(page.next_cursor || null);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted && queryRef.current === term) setState({ status: "error", items: [], error: error.message });
+      }
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [api, query, searchVersion]);
   const locate = () => {
     if (!navigator.geolocation) { setState({ status: "error", items: [], error: "Este navegador no permite consultar la ubicación." }); return; }
     navigator.geolocation.getCurrentPosition(({ coords }) => { setCoordinates({ latitude: coords.latitude, longitude: coords.longitude }); setMapCenter({ lat: coords.latitude, lng: coords.longitude }); setLocationMode("current"); }, () => { setCoordinates(null); setState({ status: "error", items: [], error: "Sin permiso de ubicación: activa el permiso o busca por nombre." }); }, { enableHighAccuracy: true, timeout: 10000 });
   };
-  const search = async (event) => {
-    event?.preventDefault(); setState({ status: "loading", items: [], error: "" });
+  const searchNearby = async () => {
+    setNextCursor(null);
+    setState({ status: "loading", items: [], error: "" });
     try {
-      if (advanced && coordinates) {
-        const result = await api.nearby({ ...coordinates, radius: radius * 1000, cuisineStyles: styles });
-        setState({ status: result.items.length ? "ready" : "empty", items: result.items, error: result.truncated ? "Hay más resultados; reduce el radio o selecciona más estilos." : "" });
-        setMapCenter({ lat: coordinates.latitude, lng: coordinates.longitude });
-        setMapVisible(true);
-      } else {
-        if (query.trim().length < 2) throw new Error("Escribe al menos dos caracteres para buscar.");
-        const result = await api.restaurants({ q: query.trim(), limit: 50 });
-        setState({ status: result.items.length ? "ready" : "empty", items: result.items, error: "" });
-      }
+      if (!coordinates) throw new Error("Permite el acceso a tu ubicación antes de buscar por cercanía.");
+      const result = await api.nearby({ ...coordinates, radius: radius * 1000, cuisineStyles: styles });
+      setState({ status: result.items.length ? "ready" : "empty", items: result.items, error: result.truncated ? "Hay más resultados; reduce el radio o selecciona más estilos." : "" });
+      setMapCenter({ lat: coordinates.latitude, lng: coordinates.longitude });
+      setMapVisible(true);
     } catch (error) { setState({ status: "error", items: [], error: error.message }); }
   };
-  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1" className="page-heading">Explorar</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar restaurante o estilo" value={query} onChange={(e) => setQuery(e.target.value)} /><Button type="submit" variant="contained">Buscar por conceptos clave</Button></Box><Button onClick={() => setAdvanced((value) => !value)}>{advanced ? "Ocultar búsqueda avanzada" : "Búsqueda avanzada"}</Button>{advanced && <Card><CardContent><Stack spacing={2}><FormControl fullWidth><Typography variant="body2">Estilos de comida</Typography><Select multiple value={styles} onChange={(e) => setStyles(e.target.value)}>{catalogue.map((style) => <MenuItem key={style.slug} value={style.slug}>{style.name}</MenuItem>)}</Select></FormControl><Typography>Ubicación: {locationMode === "current" ? "mi ubicación actual" : "dirección añadida"}</Typography><Button onClick={locate}>Usar mi ubicación actual</Button><TextField label="Dirección" disabled={!coordinates} helperText="La búsqueda por dirección requiere geocodificación; por ahora usa tu ubicación actual." /><Typography>Radio: {radius} km</Typography><Slider min={1} max={50} value={radius} onChange={(_, value) => setRadius(value)} aria-label="Radio de búsqueda en kilómetros" /><Button variant="contained" disabled={!coordinates} onClick={search}>Buscar cerca</Button></Stack></CardContent></Card>}<Button variant="outlined" onClick={() => setMapVisible((visible) => !visible)}>{mapVisible ? "Ocultar mapa" : "Explorar el mapa"}</Button>{mapVisible && <GoogleRestaurantMap api={api} restaurants={state.items} center={mapCenter} onBoundsResults={(items) => setState({ status: items.length ? "ready" : "empty", items, error: "" })} onOpenRestaurant={(id) => navigate(`/restaurants/${id}`)} />}{state.status === "loading" && <BusyState label="Buscando restaurantes…" />}{state.status === "empty" && <Alert severity="info">Sin resultados.</Alert>}{state.status === "error" && <Alert severity="warning">{state.error}</Alert>}{state.items.map((restaurant) => <Card key={restaurant.id} onClick={() => navigate(`/restaurants/${restaurant.id}`)} sx={{ cursor: "pointer" }}><CardContent><Typography variant="h3">{restaurant.name}</Typography><Typography color="text.secondary">{restaurant.address}{restaurant.distance_m ? ` · ${(restaurant.distance_m / 1000).toFixed(1)} km` : ""}</Typography><Typography>{restaurant.cuisine_styles?.map((style) => style.name).join(" · ")}</Typography></CardContent></Card>)}</Stack></Container>;
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    const term = query.trim();
+    const controller = new AbortController();
+    moreControllerRef.current = controller;
+    setLoadingMore(true);
+    try {
+      const page = await api.restaurants({ q: term, cursor: nextCursor, limit: 20, signal: controller.signal });
+      if (!controller.signal.aborted && queryRef.current === term) {
+        setState((current) => ({ ...current, status: "ready", items: [...current.items, ...page.items] }));
+        setNextCursor(page.next_cursor || null);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && queryRef.current === term) setState((current) => ({ ...current, status: "error", error: error.message }));
+    } finally {
+      if (moreControllerRef.current === controller) { moreControllerRef.current = null; setLoadingMore(false); }
+    }
+  };
+  const submitSearch = (event) => { event.preventDefault(); if (query.trim().length >= 2) setSearchVersion((version) => version + 1); };
+  const acceptMapResults = (items) => { setNextCursor(null); setState({ status: items.length ? "ready" : "empty", items, error: "" }); };
+  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1" className="page-heading">Explorar</Typography><Box component="form" onSubmit={submitSearch} className="field-stack"><TextField label="Buscar restaurante por nombre" value={query} onChange={(e) => setQuery(e.target.value)} helperText="Escribe al menos dos caracteres; los resultados se actualizan mientras escribes." /><Button type="submit" variant="contained" disabled={query.trim().length < 2}>Buscar</Button></Box><Button onClick={() => setAdvanced((value) => !value)}>{advanced ? "Ocultar búsqueda avanzada" : "Búsqueda avanzada"}</Button>{advanced && <Card><CardContent><Stack spacing={2}><FormControl fullWidth><Typography variant="body2">Estilos de comida</Typography><Select multiple value={styles} onChange={(e) => setStyles(e.target.value)}>{catalogue.map((style) => <MenuItem key={style.slug} value={style.slug}>{style.name}</MenuItem>)}</Select></FormControl><Typography>Ubicación: {locationMode === "current" ? "mi ubicación actual" : "dirección añadida"}</Typography><Button onClick={locate}>Usar mi ubicación actual</Button><TextField label="Dirección" disabled={!coordinates} helperText="La búsqueda por dirección requiere geocodificación; por ahora usa tu ubicación actual." /><Typography>Radio: {radius} km</Typography><Slider min={1} max={50} value={radius} onChange={(_, value) => setRadius(value)} aria-label="Radio de búsqueda en kilómetros" /><Button variant="contained" disabled={!coordinates} onClick={searchNearby}>Buscar cerca</Button></Stack></CardContent></Card>}<Button variant="outlined" onClick={() => setMapVisible((visible) => !visible)}>{mapVisible ? "Ocultar mapa" : "Explorar el mapa"}</Button>{mapVisible && <GoogleRestaurantMap api={api} restaurants={state.items} center={mapCenter} onBoundsResults={acceptMapResults} onOpenRestaurant={(id) => navigate(`/restaurants/${id}`)} />}{state.status === "loading" && <BusyState label="Buscando restaurantes…" />}{state.status === "empty" && <Alert severity="info">Sin resultados.</Alert>}{state.status === "error" && <Alert severity="warning">{state.error}</Alert>}{state.items.map((restaurant) => <Card key={restaurant.id} onClick={() => navigate(`/restaurants/${restaurant.id}`)} sx={{ cursor: "pointer" }}><CardContent><Typography variant="h3">{restaurant.name}</Typography><Typography color="text.secondary">{restaurant.address}{restaurant.distance_m ? ` · ${(restaurant.distance_m / 1000).toFixed(1)} km` : ""}</Typography><Typography>{restaurant.cuisine_styles?.map((style) => style.name).join(" · ")}</Typography></CardContent></Card>)}{nextCursor && <Button variant="outlined" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Cargando…" : "Cargar más restaurantes"}</Button>}</Stack></Container>;
 }
 
 function ProfilePage() {
@@ -655,9 +701,43 @@ function ProfilePage() {
 function NotificationsPage() {
   const { api } = useSession();
   const [query, setQuery] = useState("");
+  const queryRef = useRef(""); queryRef.current = query.trim();
+  const [searchVersion, setSearchVersion] = useState(0);
   const [state, setState] = useState({ status: "idle", users: [], error: "" });
-  const search = async (event) => { event.preventDefault(); setState({ status: "loading", users: [], error: "" }); try { const result = await api.users({ q: query.trim() }); setState({ status: result.items.length ? "ready" : "empty", users: result.items, error: "" }); } catch (error) { setState({ status: "error", users: [], error: error.message }); } };
-  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1">Notificaciones</Typography><PushPreferences /><Typography variant="h2">Buscar personas</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar por @handle" value={query} onChange={(e) => setQuery(e.target.value)} required inputProps={{ minLength: 2 }} /><Button variant="contained" type="submit">Buscar</Button></Box>{state.status === "loading" && <BusyState label="Buscando personas…" />}{state.status === "empty" && <Alert severity="info">@{query} no encontrado.</Alert>}{state.status === "error" && <Alert severity="error">{state.error}</Alert>}{state.users.map((person) => <Card key={person.id} component={RouterLink} to={`/profile/${person.handle}`} sx={{ textDecoration: "none" }}><CardContent><Typography variant="h3">@{person.handle}</Typography><Typography color="text.secondary">{person.name}</Typography></CardContent></Card>)}</Stack></Container>;
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const moreControllerRef = useRef(null);
+  useEffect(() => {
+    const term = query.trim();
+    moreControllerRef.current?.abort(); setLoadingMore(false); setNextCursor(null);
+    if (term.length < 2) { setState({ status: "idle", users: [], error: "" }); return undefined; }
+    const controller = new AbortController();
+    setState({ status: "loading", users: [], error: "" });
+    const timer = setTimeout(async () => {
+      try {
+        const page = await api.users({ q: term, limit: 20, signal: controller.signal });
+        if (!controller.signal.aborted && queryRef.current === term) {
+          setState({ status: page.items.length ? "ready" : "empty", users: page.items || [], error: "" });
+          setNextCursor(page.next_cursor || null);
+        }
+      } catch (error) { if (!controller.signal.aborted && queryRef.current === term) setState({ status: "error", users: [], error: error.message }); }
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [api, query, searchVersion]);
+  const search = (event) => { event.preventDefault(); if (query.trim().length >= 2) setSearchVersion((version) => version + 1); };
+  const loadMore = async () => {
+    if (!nextCursor || loadingMore) return;
+    const term = query.trim(); const controller = new AbortController(); moreControllerRef.current = controller; setLoadingMore(true);
+    try {
+      const page = await api.users({ q: term, cursor: nextCursor, limit: 20, signal: controller.signal });
+      if (!controller.signal.aborted && queryRef.current === term) {
+        setState((current) => ({ ...current, status: "ready", users: [...current.users, ...page.items] }));
+        setNextCursor(page.next_cursor || null);
+      }
+    } catch (error) { if (!controller.signal.aborted && queryRef.current === term) setState((current) => ({ ...current, status: "error", error: error.message })); }
+    finally { if (moreControllerRef.current === controller) { moreControllerRef.current = null; setLoadingMore(false); } }
+  };
+  return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1">Notificaciones</Typography><PushPreferences /><Typography variant="h2">Buscar personas</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar por @handle" value={query} onChange={(e) => setQuery(e.target.value)} required inputProps={{ minLength: 2 }} helperText="Los resultados aparecen mientras escribes; ingresa al menos dos caracteres." /><Button variant="contained" type="submit" disabled={query.trim().length < 2}>Buscar</Button></Box>{state.status === "loading" && <BusyState label="Buscando personas…" />}{state.status === "empty" && <Alert severity="info">@{query} no encontrado.</Alert>}{state.status === "error" && <Alert severity="error">{state.error}</Alert>}{state.users.map((person) => <Card key={person.id} component={RouterLink} to={`/profile/${person.handle}`} sx={{ textDecoration: "none" }}><CardContent><Typography variant="h3">@{person.handle}</Typography><Typography color="text.secondary">{person.name}</Typography></CardContent></Card>)}{nextCursor && <Button variant="outlined" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Cargando…" : "Cargar más personas"}</Button>}</Stack></Container>;
 }
 
 function ActivityPage({ activityType }) {
