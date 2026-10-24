@@ -213,7 +213,7 @@ Adjuntar aquí capturas o un video breve obtenidos en el despliegue HTTPS. No se
 
 ![Página de Foodie en PC](evidencias/instalar_desde_web.png)
 ![Página de Foodie en Android](evidencias/instalar_android.jpg)
-![Instalada en PC](evidencias/instalar_pc.png)
+![Instalada en PC](evidencias/instalada_pc.png)
 ![Instalada en Android](evidencias/instalada_android.jpg)
 
 2. **Modo offline:**
@@ -226,8 +226,6 @@ Adjuntar aquí capturas o un video breve obtenidos en el despliegue HTTPS. No se
 ![Notificación recibida](evidencias/notificacion_recibida.png)
 ![Redirección de la notificación](evidencias/seguir_la_notificacion.png)
 
-
-La revisión visual y funcional debe realizarse con dos cuentas. También conviene registrar la fecha, dispositivo y navegador utilizados.
 
 ## Resultado de las pruebas
 
@@ -257,5 +255,4 @@ El build también genera el precache del service worker. Las pruebas automatizad
 
 ## Declaración de uso de inteligencia artificial generativa
 
-En el desarrollo y documentación de esta entrega se utilizaron ChatGPT y Codex como asistentes de programación. Se emplearon para apoyar la revisión del código, diagnosticar errores, implementar cambios solicitados y redactar documentación. El equipo revisó el resultado y mantiene la responsabilidad sobre el código, sus decisiones y su explicación ante la evaluación.
-
+En el desarrollo y documentación de esta entrega se utilizaron ChatGPT y Codex como asistentes de programación. Se emplearon para apoyar la revisión del código, diagnosticar errores, implementar cambios solicitados y redactar documentación. 
