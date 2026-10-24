@@ -994,7 +994,9 @@ const object = item[item.type];
 
 **El item de tipo `photo` lleva una colección de fotografías**, en
 `photo.photos`, porque la épica 9 publica varias en un mismo acto y las
-presenta como una sola actividad. Trátalo siempre como colección, aunque traiga
+presenta como una sola actividad. `photo.id` identifica ese acto completo y
+coincide con el identificador usado en su notificación; cada elemento de
+`photo.photos` conserva además su propio `id`. Trátalo siempre como colección, aunque traiga
 una.
 
 **Los dos instantes son distintos y las dos vistas ordenan por uno distinto.**

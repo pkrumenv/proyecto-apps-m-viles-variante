@@ -319,6 +319,7 @@ def photo_activity_statement(viewer_id: UUID) -> Select:
     return (
         select(
             photos.c.id,
+            photos.c.upload_group,
             photos.c.kind,
             photos.c.visibility,
             photos.c.dish_name,
@@ -369,6 +370,7 @@ def photo_activity_item(rows: Sequence[Mapping]) -> dict:
         "occurred_at": published_at,
         "published_at": published_at,
         PHOTO_TYPE: {
+            "id": first["upload_group"] or first["id"],
             "kind": first["kind"],
             "visibility": first["visibility"],
             "author": user_summary(first),

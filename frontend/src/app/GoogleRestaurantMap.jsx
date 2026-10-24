@@ -1,23 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, CircularProgress, Stack } from "@mui/material";
+import { loadGoogleMaps } from "./google-maps.js";
 
-let mapsLoader;
 const DEFAULT_CENTER = { lat: -33.4489, lng: -70.6693 };
-
-function loadGoogleMaps(key) {
-  if (window.google?.maps) return Promise.resolve(window.google.maps);
-  if (mapsLoader) return mapsLoader;
-  mapsLoader = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    const callback = `mapsReady_${Math.random().toString(36).slice(2)}`;
-    window[callback] = () => { delete window[callback]; resolve(window.google.maps); };
-    script.async = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=${callback}&v=weekly`;
-    script.onerror = () => { delete window[callback]; mapsLoader = null; reject(new Error("No se pudo cargar Google Maps. Revisa la clave y sus restricciones.")); };
-    document.head.appendChild(script);
-  });
-  return mapsLoader;
-}
 
 function containsBounds(outer, inner) {
   const sw = outer.getSouthWest(); const ne = outer.getNorthEast();
@@ -78,7 +63,7 @@ export default function GoogleRestaurantMap({ api, restaurants = [], onOpenResta
   }, [restaurants, onOpenRestaurant]);
 
   return <Stack spacing={1}>
-    {error && <Alert severity="warning" action={import.meta.env.VITE_GOOGLE_MAPS_API_KEY ? <Button color="inherit" size="small" onClick={() => { mapsLoader = null; setError(""); setRetry((n) => n + 1); }}>Reintentar</Button> : undefined}>{error}</Alert>}
+    {error && <Alert severity="warning" action={import.meta.env.VITE_GOOGLE_MAPS_API_KEY ? <Button color="inherit" size="small" onClick={() => { setError(""); setRetry((n) => n + 1); }}>Reintentar</Button> : undefined}>{error}</Alert>}
     {loading && <Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={18} /><span>Actualizando restaurantes de la zona…</span></Stack>}
     {truncated && <Alert severity="info">Hay demasiados restaurantes en esta zona. Acerca el mapa para verlos todos.</Alert>}
     <Box ref={elementRef} role="application" aria-label="Mapa interactivo de restaurantes" sx={{ width: "100%", height: { xs: 360, sm: 480 }, borderRadius: 2, overflow: "hidden", backgroundColor: "#e8eee5" }} />

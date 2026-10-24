@@ -85,6 +85,9 @@ class ActivityPhotos(BaseModel):
     presents them as one activity.
     """
 
+    # Stable identifier for the whole upload act. For a multi-photo upload it
+    # is the shared upload_group, which is also the id carried by Web Push.
+    id: UUID
     kind: str
     visibility: Literal["public", "private"]
     author: UserSummary
