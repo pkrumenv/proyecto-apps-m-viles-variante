@@ -612,21 +612,56 @@ function UploadPhotosPage() {
 }
 
 function EvaluateRestaurantPage() {
-  const { api } = useSession();
+  const { api, state: session } = useSession();
   const { id } = useParams();
   const navigate = useNavigate();
   const [criteria, setCriteria] = useState([]);
   const [ratings, setRatings] = useState({});
   const [gallery, setGallery] = useState([]);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
+  const [galleryState, setGalleryState] = useState({ status: "loading", error: "" });
+  const [selectionError, setSelectionError] = useState("");
   const [comment, setComment] = useState("");
   const [visibility, setVisibility] = useState("public");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => { const controller = new AbortController(); api.evaluationCriteria({ signal: controller.signal }).then((items) => { if (!controller.signal.aborted) { setCriteria(items); setRatings(Object.fromEntries(items.map((item) => [item.slug, 3]))); } }).catch((cause) => !controller.signal.aborted && setError(cause.message)); return () => controller.abort(); }, [api]);
-  useEffect(() => { const controller = new AbortController(); api.restaurantGallery(id, { limit: 50, signal: controller.signal }).then((page) => !controller.signal.aborted && setGallery((page.items || []).filter((photo) => photo.kind === "menu" || photo.kind === "venue"))).catch((cause) => !controller.signal.aborted && setError(cause.message)); return () => controller.abort(); }, [api, id]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setGalleryState({ status: "loading", error: "" });
+    api.restaurantGallery(id, { limit: 50, signal: controller.signal })
+      .then((page) => {
+        if (!controller.signal.aborted) {
+          const eligible = (page.items || []).filter((photo) =>
+            photo.author?.id === session.session?.user?.id && (photo.kind === "menu" || photo.kind === "venue"),
+          );
+          setGallery(eligible);
+          setGalleryState({ status: eligible.length ? "ready" : "empty", error: "" });
+        }
+      })
+      .catch((cause) => !controller.signal.aborted && setGalleryState({ status: "error", error: cause.message }));
+    return () => controller.abort();
+  }, [api, id, session.session?.user?.id]);
+  const togglePhoto = (photo) => {
+    setSelectionError("");
+    if (!selectedPhotoIds.includes(photo.id) && selectedPhotoIds.length >= 20) {
+      setSelectionError("Puedes asociar hasta 20 fotografías a una evaluación.");
+      return;
+    }
+    setSelectedPhotoIds((current) => {
+      if (current.includes(photo.id)) return current.filter((photoId) => photoId !== photo.id);
+      return [...current, photo.id];
+    });
+  };
+  const changeVisibility = (value) => {
+    setVisibility(value);
+    if (value === "public") {
+      const privatePhotoIds = new Set(gallery.filter((photo) => photo.visibility === "private").map((photo) => photo.id));
+      setSelectedPhotoIds((current) => current.filter((photoId) => !privatePhotoIds.has(photoId)));
+    }
+  };
   const submit = async (event) => { event.preventDefault(); setBusy(true); setError(""); try { await api.createEvaluation({ restaurant_id: id, ratings, comment, visibility, photo_ids: selectedPhotoIds }); navigate(`/restaurants/${id}`, { replace: true }); } catch (cause) { setError(cause.message); } finally { setBusy(false); } };
-  return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Typography variant="h1">Evaluar restaurante</Typography>{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack">{criteria.map((criterion) => <Stack key={criterion.slug} direction="row" alignItems="center" justifyContent="space-between"><Typography>{criterion.name}</Typography><TextField select size="small" label="Puntaje" value={ratings[criterion.slug] ?? 3} onChange={(event) => setRatings((current) => ({ ...current, [criterion.slug]: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((n) => <MenuItem key={n} value={n}>{"★".repeat(n)} {n}/5</MenuItem>)}</TextField></Stack>)}<TextField label="Comentario general" multiline minRows={3} required value={comment} onChange={(event) => setComment(event.target.value)} /><TextField select label="Visibilidad" value={visibility} onChange={(event) => setVisibility(event.target.value)}><MenuItem value="public">Pública</MenuItem><MenuItem value="private">Privada</MenuItem></TextField><Button variant="contained" type="submit" disabled={busy || !criteria.length}>{busy ? "Publicando…" : "Evaluar"}</Button></Box></Stack></Container>;
+  return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Button component={RouterLink} to={`/restaurants/${id}`} startIcon={<ArrowBackIcon />}>Volver a la ficha</Button><Typography variant="h1">Evaluar restaurante</Typography>{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack">{criteria.map((criterion) => <Stack key={criterion.slug} direction="row" alignItems="center" justifyContent="space-between" spacing={1}><Typography>{criterion.name}</Typography><TextField select size="small" label={`Puntaje: ${criterion.name}`} value={ratings[criterion.slug] ?? 3} onChange={(event) => setRatings((current) => ({ ...current, [criterion.slug]: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((n) => <MenuItem key={n} value={n}>{"★".repeat(n)} {n}/5</MenuItem>)}</TextField></Stack>)}<TextField label="Comentario general" multiline minRows={3} required value={comment} onChange={(event) => setComment(event.target.value)} /><TextField select label="Visibilidad" value={visibility} onChange={(event) => changeVisibility(event.target.value)} helperText="Una evaluación privada solo se muestra en tu perfil. Una pública puede verla la comunidad; no puede incluir fotos privadas."><MenuItem value="public">Pública</MenuItem><MenuItem value="private">Privada</MenuItem></TextField><Box component="section" aria-labelledby="evaluation-photos-heading"><Stack spacing={1.5}><Box><Typography id="evaluation-photos-heading" variant="h2" fontSize="1.25rem">Asociar fotos (opcional)</Typography><Typography variant="body2" color="text.secondary">Elige fotos tuyas del menú o de las instalaciones de este restaurante. {selectedPhotoIds.length}/20 seleccionadas.</Typography></Box>{galleryState.status === "loading" && <BusyState label="Cargando tus fotos del restaurante…" />}{galleryState.status === "error" && <Alert severity="error">No se pudieron cargar tus fotos. {galleryState.error}</Alert>}{galleryState.status === "empty" && <Alert severity="info">Aún no tienes fotos propias del menú o de las instalaciones para asociar.</Alert>}{galleryState.status === "ready" && <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 1 }}>{gallery.map((photo) => { const selected = selectedPhotoIds.includes(photo.id); const blockedByVisibility = visibility === "public" && photo.visibility === "private"; const atLimit = !selected && selectedPhotoIds.length >= 20; return <Card key={photo.id} variant="outlined" sx={{ opacity: blockedByVisibility ? 0.65 : 1 }}><Box component="img" src={photo.content_url} alt={photo.caption || (photo.kind === "menu" ? "Foto del menú" : "Foto de las instalaciones")} sx={{ display: "block", width: "100%", aspectRatio: "1", objectFit: "cover" }} /><CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}><FormControlLabel sx={{ m: 0, alignItems: "flex-start" }} control={<Checkbox checked={selected} onChange={() => togglePhoto(photo)} disabled={busy || blockedByVisibility || atLimit} inputProps={{ "aria-label": `Asociar foto: ${photo.caption || (photo.kind === "menu" ? "menú" : "instalaciones")}` }} />} label={<Stack><Typography variant="body2">{photo.kind === "menu" ? "Menú" : "Instalaciones"}</Typography>{photo.visibility === "private" && <Typography variant="caption" color="text.secondary">Privada</Typography>}</Stack>} /></CardContent></Card>; })}</Box>}{selectionError && <Alert severity="warning">{selectionError}</Alert>}</Stack></Box><Button variant="contained" type="submit" disabled={busy || !criteria.length}>{busy ? "Publicando…" : "Evaluar"}</Button></Box></Stack></Container>;
 }
 
 function ReviewPhotoPage() {
