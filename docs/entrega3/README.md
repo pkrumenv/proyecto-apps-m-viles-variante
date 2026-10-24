@@ -22,7 +22,6 @@ Las siguientes cuentas vienen del seed del proyecto y comparten la contraseña d
 | demo@example.com | @demo | Cuenta principal; sigue a personas y a un restaurante y tiene actividad pública y privada. |
 | demo2@example.com | @demo2 | Cuenta seguida por demo; permite comprobar feed y notificaciones entre dos usuarios. |
 
-El seed de demostración debe estar habilitado en el entorno que se evalúa. Estas cuentas son para desarrollo y evaluación; no se deben reutilizar como cuentas reales. Antes de entregar, comprueben que ambas pueden iniciar sesión en el despliegue.
 
 ## Instrucciones para ejecutar localmente
 
@@ -45,7 +44,7 @@ Crear frontend/.env.local para el build de desarrollo:
 
     VITE_GOOGLE_MAPS_API_KEY=CLAVE_RESTRINGIDA_PARA_DESARROLLO
 
-La clave VITE se entrega al navegador dentro del bundle. Debe tener restricciones por referente HTTP para localhost y el dominio de despliegue, y limitarse a las API de Maps utilizadas. No debe contenerse en el repositorio. Reinicien Vite o reconstruyan el frontend después de cambiarla.
+La clave VITE se entrega al navegador dentro del bundle. Debe tener restricciones por referente HTTP para localhost y el dominio de despliegue, y limitarse a Maps JavaScript API. No debe contenerse en el repositorio. Reiniciar Vite o reconstruir el frontend después de cambiarla.
 
 Para activar Web Push local, crear o completar .env en la raíz:
 
@@ -53,7 +52,7 @@ Para activar Web Push local, crear o completar .env en la raíz:
     VAPID_PRIVATE_KEY=CLAVE_PRIVADA
     VAPID_SUBJECT=mailto:correo-del-equipo@example.com
 
-No versionen .env, frontend/.env.local ni la clave privada VAPID. No definan VAPID_PRIVATE_KEY con prefijo VITE_.
+No compartit .env, frontend/.env.local ni la clave privada VAPID.
 
 ### Iniciar y detener la aplicación
 
@@ -68,20 +67,19 @@ Para detener los servicios conservando la base local:
     Ctrl+C
     docker compose down
 
-No usen docker compose down -v si desean conservar los datos de desarrollo. El seed local crea cuentas de demostración y contenido para recorrer las épicas.
+No usar docker compose down -v si se desea conservar los datos de desarrollo. El seed local crea cuentas de demostración y contenido para recorrer las épicas.
 
 ## Instrucciones para desplegar
 
 El despliegue se realiza con el workflow del repositorio descrito en DEPLOY.md. El origen de producción es https://grupo19.4203.iccuandes.org y debe publicarse por HTTPS.
 
-En la configuración del repositorio, en Settings → Secrets and variables → Actions, definan:
+En la configuración del repositorio, en Settings → Secrets and variables → Actions, definir:
 
 **Variables**
 
 - GROUP_ID: 19
 - HOST_PORT: 4019
 - PUBLIC_ORIGIN: https://grupo19.4203.iccuandes.org
-- SEED_DEMO_DATA: true mientras el ayudante necesite cuentas de demostración
 
 **Secretos**
 
@@ -100,7 +98,7 @@ Después de que termine el workflow, comprobar:
 
 En el navegador, verifiquen que se puede recargar una URL profunda, que el service worker queda registrado con scope /, que la cookie de sesión está marcada Secure y HttpOnly, y que la aplicación se puede instalar como PWA.
 
-## Mapa de las diecisiete épicas
+## Mapa de las épicas
 
 | Épica | Funcionalidad | Ruta de la aplicación |
 |---|---|---|
@@ -207,8 +205,6 @@ La notificación incluye un título, texto, tipo, id y URL de cliente. Las visit
 
 ## Evidencias de instalación, modo offline y notificación
 
-Adjuntar aquí capturas o un video breve obtenidos en el despliegue HTTPS. No se deben usar capturas simuladas. Incluir:
-
 1. **PWA instalada:**
 
 ![Página de Foodie en PC](evidencias/instalar_desde_web.png)
@@ -237,7 +233,6 @@ Los siguientes resultados fueron incorporados desde la ejecución local:
 | npm test, desde frontend | Correcto: 23 pruebas aprobadas, 0 fallidas. |
 | npm run build, desde frontend | Correcto: build completado en 2,93 segundos; una advertencia por tamaño del bundle JavaScript. |
 
-El build también genera el precache del service worker. Las pruebas automatizadas cubren el cliente HTTP, las transiciones de autenticación y otros comportamientos seleccionados; no sustituyen el recorrido manual de todas las épicas, PWA offline, instalación y notificaciones en el despliegue.
 
 ## Problemas conocidos y restricciones
 
@@ -255,4 +250,4 @@ El build también genera el precache del service worker. Las pruebas automatizad
 
 ## Declaración de uso de inteligencia artificial generativa
 
-En el desarrollo y documentación de esta entrega se utilizaron ChatGPT y Codex como asistentes de programación. Se emplearon para apoyar la revisión del código, diagnosticar errores, implementar cambios solicitados y redactar documentación. 
+En el desarrollo y documentación de esta entrega se utilizaron Claude (Sonnet 5.5) y Codex (6 Luna) como asistentes de programación. Se emplearon para apoyar la revisión del código, diagnosticar errores, implementar funcionalidades y redactar documentación. 
