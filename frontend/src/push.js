@@ -8,6 +8,7 @@ export const PUSH_STATES = Object.freeze({
   ERROR: "error",
 });
 
+// Comprueba las APIs de navegador necesarias antes de ofrecer Push.
 function isSupported() {
   return (
     typeof window !== "undefined" &&
@@ -17,6 +18,7 @@ function isSupported() {
   );
 }
 
+// Convierte la clave VAPID codificada a los bytes que exige PushManager.
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -28,6 +30,7 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
+// Codifica las claves de la suscripción en el formato que espera el backend.
 function arrayBufferToBase64Url(buffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -37,14 +40,19 @@ function arrayBufferToBase64Url(buffer) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
+/** Controla permiso, alta y baja de Push cuando la persona usa sus preferencias. */
 export function createPushController({ api, onStateChange = () => {} }) {
   let state;
+
+  // Publica el nuevo estado de Push para que la pantalla actualice sus controles.
 
   function transition(status, details = {}) {
     state = Object.freeze({ status, ...details });
     onStateChange(state);
     return state;
   }
+
+  // Lee permiso y suscripción existentes sin solicitar permiso al cargar.
 
   async function refresh() {
     if (!isSupported()) {
@@ -73,6 +81,8 @@ export function createPushController({ api, onStateChange = () => {} }) {
       message: "Puedes activar las notificaciones push.",
     });
   }
+
+  // Solicita permiso tras la acción explícita y registra la suscripción VAPID en la API.
 
   async function subscribe() {
     if (!isSupported()) {
@@ -119,6 +129,8 @@ export function createPushController({ api, onStateChange = () => {} }) {
       });
     }
   }
+
+  // Elimina la suscripción local y su endpoint asociado en el backend.
 
   async function unsubscribe() {
     transition(PUSH_STATES.UNSUBSCRIBING, { message: "Desactivando…" });

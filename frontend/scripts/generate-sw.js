@@ -7,6 +7,7 @@ const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const outputDirectory = resolve(scriptDirectory, "../dist");
 const serviceWorkerPath = resolve(outputDirectory, "sw.js");
 
+// Recorre dist para que el precache se derive de los archivos reales del build.
 async function listFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(entries.map(async (entry) => {

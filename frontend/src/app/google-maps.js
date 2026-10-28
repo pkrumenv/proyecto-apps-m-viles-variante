@@ -1,5 +1,6 @@
 let mapsLoader;
 
+/** Carga una sola vez la biblioteca de Google Maps y reutiliza su promesa entre vistas. */
 export function loadGoogleMaps(key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
   if (window.google?.maps) return Promise.resolve(window.google.maps);
   if (!key) return Promise.reject(new Error("Configura VITE_GOOGLE_MAPS_API_KEY para usar Google Maps."));

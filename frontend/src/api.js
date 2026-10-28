@@ -1,3 +1,4 @@
+/** Conserva tipo, estado y respuesta de un error HTTP o de red. */
 export class ApiError extends Error {
   constructor(message, { kind, status = null, payload = null, cause = null }) {
     super(message, cause ? { cause } : undefined);
@@ -8,6 +9,7 @@ export class ApiError extends Error {
   }
 }
 
+/** Extrae un mensaje legible de los formatos de error habituales del backend. */
 export function errorDetail(payload, fallback) {
   const detail = payload?.detail ?? payload;
   if (typeof detail === "string" && detail.trim()) {
@@ -27,6 +29,7 @@ export function errorDetail(payload, fallback) {
   return fallback;
 }
 
+// Lee JSON de una respuesta HTTP y tolera cuerpos vacíos o mal formados.
 async function responsePayload(response) {
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
@@ -39,6 +42,7 @@ async function responsePayload(response) {
   }
 }
 
+/** Crea el cliente relativo de la API, con cookies, 401 y cancelación centralizados. */
 export function createApiClient(
   fetchImplementation = globalThis.fetch,
   { onUnauthorized = () => {} } = {},
@@ -46,6 +50,8 @@ export function createApiClient(
   if (typeof fetchImplementation !== "function") {
     throw new TypeError("A Fetch API implementation is required");
   }
+
+  // Ejecuta una solicitud Fetch, clasifica errores y comunica 401 al contexto de sesión.
 
   async function request(path, options = {}) {
     const controller = options.signal ? null : new AbortController();
@@ -90,6 +96,8 @@ export function createApiClient(
     }
     return payload;
   }
+
+  // Usa XHR solo para poder informar progreso y cancelar cargas multipart.
 
   function uploadWithProgress(path, formData, { signal, onProgress } = {}) {
     return new Promise((resolve, reject) => {
@@ -139,6 +147,8 @@ export function createApiClient(
       xhr.send(formData);
     });
   }
+
+  // Los métodos siguientes adaptan cada recurso de la API a una llamada tipada por operación.
 
   return Object.freeze({
     health: ({ signal } = {}) => request("/healthz", { signal }),

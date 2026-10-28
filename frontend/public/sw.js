@@ -3,6 +3,7 @@
 const CACHE_NAME = "foodie-shell-dev";
 const APP_SHELL_ASSETS = [];
 
+// Precachea el shell de esta versión y activa el nuevo worker.
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -11,6 +12,7 @@ self.addEventListener("install", (event) => {
   );
 });
 
+// Elimina cachés de shells antiguos y toma control de las ventanas abiertas.
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
@@ -22,6 +24,7 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Sirve recursos propios desde caché o red y usa index.html como fallback offline.
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
@@ -52,6 +55,7 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// Muestra el aviso recibido desde el backend sin consultar la API.
 self.addEventListener("push", (event) => {
   let data = {
     title: "Nueva actividad",
@@ -73,6 +77,7 @@ self.addEventListener("push", (event) => {
   }));
 });
 
+// Envía la ruta al router de una ventana activa o abre la aplicación en esa ruta.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = new URL(event.notification.data?.url || "/feed", self.location.origin);

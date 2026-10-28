@@ -64,6 +64,7 @@ import {
 import { useSession } from "./session-context.jsx";
 import CreateRestaurantPage from "./CreateRestaurantPage.jsx";
 
+/** Muestra un estado de carga accesible mientras una vista espera datos. */
 function BusyState({ label = "Cargando…" }) {
   return (
     <Stack alignItems="center" spacing={2} sx={{ py: 7 }} role="status" aria-live="polite">
@@ -73,6 +74,7 @@ function BusyState({ label = "Cargando…" }) {
   );
 }
 
+/** Restringe las rutas de la app hasta que SessionProvider confirma la sesión. */
 function RouteGate() {
   const { state, refreshSession } = useSession();
   const location = useLocation();
@@ -97,11 +99,14 @@ function RouteGate() {
   return <AppLayout />;
 }
 
+/** Presenta la navegación común y el contenido de las rutas protegidas. */
 function AppLayout() {
   const { state, logout } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
   const [logoutError, setLogoutError] = useState(null);
+
+  /** Cierra sesión desde la navegación y deja que el contexto limpie los datos asociados. */
 
   const handleLogout = async () => {
     setLogoutError(null);
@@ -149,6 +154,7 @@ function AppLayout() {
   );
 }
 
+/** Permite iniciar sesión y volver a la ruta que la persona intentó abrir. */
 function LoginPage() {
   const { state, login } = useSession();
   const navigate = useNavigate();
@@ -159,6 +165,8 @@ function LoginPage() {
 
   if (state.status === "loading") return <BusyState label="Verificando tu sesión…" />;
   if (state.status === "authenticated") return <Navigate to="/feed" replace />;
+
+  /** Envía las credenciales y vuelve a la ruta protegida que se solicitó originalmente. */
 
   const submit = async (event) => {
     event.preventDefault();
@@ -219,6 +227,7 @@ function LoginPage() {
   );
 }
 
+/** Registra una cuenta nueva y muestra los conflictos del backend junto a cada campo. */
 function RegisterPage() {
   const { api, refreshSession } = useSession();
   const navigate = useNavigate();
@@ -228,6 +237,8 @@ function RegisterPage() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [busy, setBusy] = useState(false);
   useEffect(() => { const controller = new AbortController(); api.countries({ signal: controller.signal }).then(setCountries).catch((cause) => !controller.signal.aborted && setError(cause.message)); return () => controller.abort(); }, [api]);
+  /** Envía el registro y convierte un 409 de correo o handle en un error de campo. */
+
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setError(""); setFieldErrors({});
     try { await api.register({ ...fields, handle: fields.handle.replace(/^@/, "") }); await refreshSession(); navigate("/feed", { replace: true }); }
@@ -239,6 +250,8 @@ function RegisterPage() {
     }
     finally { setBusy(false); }
   };
+  /** Actualiza un campo de registro y limpia su error al editarlo. */
+
   const updateField = (name, value) => {
     setFields((current) => ({ ...current, [name]: value }));
     if (name === "email" || name === "handle") {
@@ -248,11 +261,13 @@ function RegisterPage() {
   return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Typography variant="h1">Crear cuenta</Typography>{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack"><TextField label="Nombre" required value={fields.name} onChange={(e) => updateField("name", e.target.value)} /><TextField label="Correo electrónico" type="email" required value={fields.email} error={Boolean(fieldErrors.email)} helperText={fieldErrors.email || " "} onChange={(e) => updateField("email", e.target.value)} /><TextField label="@Handle" required value={fields.handle} error={Boolean(fieldErrors.handle)} helperText={fieldErrors.handle || " "} onChange={(e) => updateField("handle", e.target.value)} /><TextField select SelectProps={{ native: true }} label="Nacionalidad" required value={fields.nationality} onChange={(e) => updateField("nationality", e.target.value)}><option value="" />{countries.map((country) => <option key={country.code} value={country.code}>{country.name}</option>)}</TextField><TextField label="Contraseña (12 caracteres mínimo)" type="password" required inputProps={{ minLength: 12, maxLength: 128 }} value={fields.password} onChange={(e) => updateField("password", e.target.value)} /><Button type="submit" variant="contained" disabled={busy}>{busy ? "Creando cuenta…" : "Registrarme"}</Button><Button onClick={() => navigate("/login")}>Ya tengo cuenta</Button></Box></Stack></Container>;
 }
 
+/** Envía la ruta raíz al feed autenticado o al formulario de acceso. */
 function HomeRedirect() {
   const { state } = useSession();
   return <Navigate to={state.status === "authenticated" ? "/feed" : "/login"} replace />;
 }
 
+/** Ofrece activar o desactivar Push mediante una acción explícita. */
 function PushPreferences() {
   const { api, state: sessionState } = useSession();
   const [pushState, setPushState] = useState({ status: PUSH_STATES.IDLE, message: "" });
@@ -305,10 +320,12 @@ function PushPreferences() {
   );
 }
 
+/** Extrae el objeto de dominio contenido dentro de una entrada de actividad del feed. */
 function activityData(activity) {
   return activity?.[activity.type] ?? null;
 }
 
+/** Construye la identidad estable que usa el feed para evitar duplicados. */
 function feedActivityKey(activity) {
   const data = activityData(activity);
   const id = activity?.type === "photo"
@@ -317,6 +334,7 @@ function feedActivityKey(activity) {
   return `${activity?.type || "unknown"}:${id || activity?.published_at || ""}`;
 }
 
+/** Convierte una actividad en la ruta de detalle que debe abrir el router. */
 function activityPath(activity) {
   const data = activityData(activity);
   if (!data) return "/feed";
@@ -327,6 +345,7 @@ function activityPath(activity) {
   return route && data.id ? `/${route}/${data.id}` : "/feed";
 }
 
+/** Reutiliza la presentación de una actividad en el feed y los perfiles. */
 function ActivityCard({ activity, offline, photoUrls, showVisibility = false, highlighted = false }) {
   const item = activityData(activity);
   if (!item) return null;
@@ -380,6 +399,7 @@ function ActivityCard({ activity, offline, photoUrls, showVisibility = false, hi
   );
 }
 
+/** Carga el feed online u offline, resuelve notificaciones y pagina por cursor. */
 function FeedPage() {
   const { api, state: session, refreshSession, invalidate } = useSession();
   const userId = session.session.user.id;
@@ -397,10 +417,14 @@ function FeedPage() {
   const [highlightedNotificationId, setHighlightedNotificationId] = useState(null);
 
   useEffect(() => {
+    /** Al recuperar conexión, revalida una sesión que estaba en modo offline. */
+
     const handleOnline = () => {
       setIsOnline(true);
       if (session.status === "offline") refreshSession();
     };
+    // Marca la pérdida de conectividad para que el feed use su copia persistida.
+
     const handleOffline = () => setIsOnline(false);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -418,6 +442,8 @@ function FeedPage() {
     setLoadingMore(false);
     setPaginationError("");
     setNextCursor(null);
+
+    /** Carga la primera página online o recupera la copia local si no hay red. */
 
     const loadFeed = async () => {
       setFeed((current) => ({ ...current, status: "loading", photoUrls: new Map() }));
@@ -486,9 +512,13 @@ function FeedPage() {
     notificationLookupRef.current = activityFromNotification;
     const controller = new AbortController();
     setNotificationLookup({ id: activityFromNotification, status: "loading", error: "" });
+    /** Recorre páginas del feed hasta localizar y destacar la foto de una notificación. */
+
     const findNotifiedActivity = async () => {
       let items = feed.items;
       let cursor = nextCursor;
+      // Busca dentro de las páginas cargadas la actividad agrupada indicada por la notificación.
+
       const find = () => items.find((item) => item.type === "photo" && String(activityData(item)?.id) === activityFromNotification);
       try {
         let match = find();
@@ -523,6 +553,8 @@ function FeedPage() {
     target.scrollIntoView({ behavior: "smooth", block: "center" });
     target.focus({ preventScroll: true });
   }, [feed.items, highlightedNotificationId]);
+
+  /** Solicita la página siguiente del feed y agrega solo actividades no mostradas. */
 
   const loadMore = async () => {
     if (!nextCursor || loadingMore || moreControllerRef.current || feed.offline) return;
@@ -598,6 +630,7 @@ function FeedPage() {
   );
 }
 
+/** Muestra el índice paginado de restaurantes disponibles. */
 function RestaurantsPage() {
   const { api } = useSession();
   const [state, setState] = useState({ status: "loading", items: [], error: null });
@@ -639,6 +672,7 @@ function RestaurantsPage() {
   );
 }
 
+/** Carga la ficha, las pestañas de actividad y las acciones del restaurante. */
 function RestaurantPage() {
   const { api } = useSession();
   const { id } = useParams();
@@ -660,17 +694,21 @@ function RestaurantPage() {
     if (tab === "evaluations") api.restaurantEvaluations(id, { signal: controller.signal }).then((value) => !controller.signal.aborted && setEvaluations(value.items || [])).catch((e) => !controller.signal.aborted && setError(e.message));
     return () => controller.abort();
   }, [api, id, tab]);
+  /** Alterna el seguimiento del restaurante actual y actualiza su estado local. */
+
   const toggleFollow = async () => { try { if (following) await api.unfollowRestaurant(id); else await api.followRestaurant(id); setFollowing(!following); } catch (e) { setError(e.message); } };
   if (error && !restaurant) return <Container className="page-content"><Alert severity="error">No se pudo abrir el restaurante. {error}</Alert></Container>;
   if (!restaurant) return <BusyState label="Cargando ficha del restaurante…" />;
   return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Button component={RouterLink} to="/explore" startIcon={<ArrowBackIcon />}>Volver a búsqueda</Button><Card><CardContent><Stack spacing={1}><Typography variant="h1">{restaurant.name}</Typography><Typography>{restaurant.address}</Typography><Typography>{restaurant.cuisine_styles.map((item) => item.name).join(" · ")}</Typography><Typography>★ {restaurant.ratings?.average?.toFixed(1) ?? "Sin evaluaciones"} · {restaurant.ratings?.total ?? 0} evaluaciones</Typography><Stack direction="row" gap={1}><Button variant={following ? "outlined" : "contained"} onClick={toggleFollow}>{following ? "Siguiendo" : "Seguir restaurante"}</Button><Button component={RouterLink} to={`/restaurants/${id}/upload`}>Subir fotos</Button><Button component={RouterLink} to={`/restaurants/${id}/evaluate`}>Evaluar</Button></Stack></Stack></CardContent></Card><Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable"><Tab label="Fotos" value="photos" /><Tab label="Reseñas" value="reviews" /><Tab label="Evaluaciones" value="evaluations" /><Tab label="Personas" value="people" /></Tabs>{tab === "photos" && (photos.length ? photos.map((photo) => <Card key={photo.id} component={RouterLink} to={`/photos/${photo.id}`} sx={{ textDecoration: "none" }}><CardContent><Typography>{photo.author.name} · {photo.kind}</Typography><Box component="img" src={photo.content_url} alt="Foto del restaurante" className="activity-photo" /><Typography>{photo.comments_count} comentarios</Typography></CardContent></Card>) : <Alert severity="info">Sin resultados.</Alert>)}{tab === "reviews" && (() => { const reviewed = photos.filter((photo) => photo.review_id); return reviewed.length ? reviewed.map((photo) => <Card key={photo.review_id} component={RouterLink} to={`/reviews/${photo.review_id}`} sx={{ textDecoration: "none" }}><CardContent><Typography>{photo.author.name} · Reseña del plato</Typography><Typography>Ver reseña y calificación</Typography></CardContent></Card>) : <Alert severity="info">Sin reseñas todavía.</Alert>; })()}{tab === "evaluations" && (evaluations.length ? evaluations.map((evaluation) => <Card key={evaluation.id} component={RouterLink} to={`/evaluations/${evaluation.id}`} sx={{ textDecoration: "none" }}><CardContent><Typography>{evaluation.author?.name}</Typography><Typography>{evaluation.comment}</Typography><Typography>{evaluation.ratings?.map((rating) => `${rating.criterion}: ${rating.rating}/5`).join(" · ")}</Typography></CardContent></Card>) : <Alert severity="info">Sin evaluaciones todavía.</Alert>)}{tab === "people" && (restaurant.known_visitors?.items?.length ? restaurant.known_visitors.items.map((person) => <Card key={person.id} component={RouterLink} to={`/profile/${person.handle}`} sx={{ textDecoration: "none" }}><CardContent><Typography>@{person.handle} · última visita {new Date(person.last_visit_at).toLocaleDateString()}</Typography></CardContent></Card>) : <Alert severity="info">No hay visitas públicas de personas que sigues.</Alert>)}{error && <Alert severity="error">{error}</Alert>}</Stack></Container>;
 }
 
+/** Reutiliza el selector público/privado y explica el alcance de cada opción. */
 function VisibilityField({ value, onChange, disabled = false, helperText, options = ["public", "private"] }) {
   return <TextField select label="Visibilidad" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} helperText={helperText || "Pública: puede aparecer en tu perfil, el feed y la ficha del restaurante. Privada: solo tú la ves en tu perfil; no se comparte en espacios públicos."}>
     {options.map((option) => <MenuItem key={option} value={option}>{option === "public" ? "Pública" : "Privada"}</MenuItem>)}
   </TextField>;
 }
+/** Registra una visita con fecha opcional y visibilidad elegida. */
 function CheckInPage() {
   const { api } = useSession();
   const { id } = useParams();
@@ -679,6 +717,8 @@ function CheckInPage() {
   const [visibility, setVisibility] = useState("public");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  /** Registra la visita con la fecha opcional y la visibilidad elegida. */
+
   const submit = async (event) => { event.preventDefault(); setError(""); try { await api.createVisit({ restaurant_id: id, visibility, ...(occurredAt ? { occurred_at: new Date(occurredAt).toISOString() } : {}) }); setSuccess(true); setTimeout(() => navigate(`/restaurants/${id}`), 900); } catch (e) { setError(e.message); } };
   return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Typography variant="h1">Check in</Typography>{success && <Alert severity="success">Check-in exitoso. Volviendo a la ficha…</Alert>}{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack"><TextField label="Fecha y hora de la visita (opcional)" type="datetime-local" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} InputLabelProps={{ shrink: true }} /><VisibilityField value={visibility} onChange={setVisibility} /><Button variant="contained" type="submit" disabled={success}>Confirmar</Button></Box></Stack></Container>;
 }
@@ -687,6 +727,7 @@ const MAX_PHOTOS_PER_GROUP = 10;
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024;
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+/** Comprueba cantidad, formato y tamaño antes de iniciar una carga de fotos. */
 function validatePhotoFiles(files) {
   if (!files.length) return "Selecciona al menos una fotografía.";
   if (files.length > MAX_PHOTOS_PER_GROUP) return `Puedes publicar hasta ${MAX_PHOTOS_PER_GROUP} fotografías a la vez.`;
@@ -699,6 +740,7 @@ function validatePhotoFiles(files) {
   return "";
 }
 
+/** Permite seleccionar, previsualizar y subir fotos de un restaurante con progreso. */
 function UploadPhotosPage() {
   const { api } = useSession();
   const { id } = useParams();
@@ -717,6 +759,8 @@ function UploadPhotosPage() {
     setPreviews(urls);
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [files]);
+  /** Guarda la selección del usuario, valida los archivos y reinicia el progreso. */
+
   const selectFiles = (event) => {
     const selected = Array.from(event.target.files || []);
     setFiles(selected);
@@ -724,6 +768,8 @@ function UploadPhotosPage() {
     setUploadProgress(null);
     event.target.value = "";
   };
+  /** Valida y carga cada foto, agrupándolas cuando se publican en un mismo acto. */
+
   const submit = async (event) => {
     event.preventDefault(); setError("");
     const validationError = validatePhotoFiles(files);
@@ -753,6 +799,7 @@ function UploadPhotosPage() {
   return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Button component={RouterLink} to={`/restaurants/${id}`} startIcon={<ArrowBackIcon />}>Volver a la ficha</Button><Typography variant="h1">Subir fotos</Typography><Typography color="text.secondary">JPEG, PNG o WebP; hasta {MAX_PHOTOS_PER_GROUP} imágenes de {MAX_PHOTO_SIZE / 1024 / 1024} MiB cada una.</Typography>{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack"><TextField select label="Tipo" value={kind} onChange={(event) => setKind(event.target.value)}><MenuItem value="dish">Plato</MenuItem><MenuItem value="menu">Menú</MenuItem><MenuItem value="venue">Instalaciones</MenuItem></TextField>{kind === "dish" && <TextField label="¿Qué plato es?" required value={dishName} onChange={(event) => setDishName(event.target.value)} />}{kind !== "dish" && <TextField label="Descripción (opcional)" value={caption} onChange={(event) => setCaption(event.target.value)} /> }<Button component="label" variant="outlined" disabled={busy}>Seleccionar imágenes<input hidden type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={selectFiles} /></Button>{files.length > 0 && <><Typography>{files.length} de {MAX_PHOTOS_PER_GROUP} imágenes · {(files.reduce((sum, file) => sum + file.size, 0) / 1024 / 1024).toFixed(2)} MiB</Typography><Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 1 }}>{files.map((file, index) => <Box key={`${file.name}-${file.lastModified}-${index}`} component="img" src={previews[index]} alt={`Vista previa: ${file.name}`} title={file.name} sx={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 1 }} />)}</Box></>}{files.length === 0 && <Typography color="text.secondary">Sin imágenes seleccionadas</Typography>}{uploadProgress && <Stack spacing={0.5} role="status" aria-live="polite"><Typography variant="body2">Subiendo {uploadProgress.index + 1}/{uploadProgress.count}: {uploadProgress.fileName} · {uploadProgress.percent}%</Typography><LinearProgress variant="determinate" value={uploadProgress.percent} aria-label="Progreso de carga de fotos" /></Stack>}<VisibilityField value={visibility} onChange={setVisibility} disabled={busy} /><Button variant="contained" type="submit" disabled={busy || !files.length}>{busy ? "Publicando…" : "Publicar"}</Button></Box></Stack></Container>;
 }
 
+/** Recoge calificaciones, comentario y fotos asociadas a una evaluación. */
 function EvaluateRestaurantPage() {
   const { api, state: session } = useSession();
   const { id } = useParams();
@@ -784,6 +831,8 @@ function EvaluateRestaurantPage() {
       .catch((cause) => !controller.signal.aborted && setGalleryState({ status: "error", error: cause.message }));
     return () => controller.abort();
   }, [api, id, session.session?.user?.id]);
+  /** Añade o quita una foto de menú/instalaciones de la evaluación. */
+
   const togglePhoto = (photo) => {
     setSelectionError("");
     if (!selectedPhotoIds.includes(photo.id) && selectedPhotoIds.length >= 20) {
@@ -795,6 +844,8 @@ function EvaluateRestaurantPage() {
       return [...current, photo.id];
     });
   };
+  /** Ajusta la visibilidad y quita fotos privadas incompatibles con una evaluación pública. */
+
   const changeVisibility = (value) => {
     setVisibility(value);
     if (value === "public") {
@@ -802,10 +853,13 @@ function EvaluateRestaurantPage() {
       setSelectedPhotoIds((current) => current.filter((photoId) => !privatePhotoIds.has(photoId)));
     }
   };
+  /** Envía los criterios, el comentario, la visibilidad y las fotos elegidas de la evaluación. */
+
   const submit = async (event) => { event.preventDefault(); setBusy(true); setError(""); try { await api.createEvaluation({ restaurant_id: id, ratings, comment, visibility, photo_ids: selectedPhotoIds }); navigate(`/restaurants/${id}`, { replace: true }); } catch (cause) { setError(cause.message); } finally { setBusy(false); } };
   return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Button component={RouterLink} to={`/restaurants/${id}`} startIcon={<ArrowBackIcon />}>Volver a la ficha</Button><Typography variant="h1">Evaluar restaurante</Typography>{error && <Alert severity="error">{error}</Alert>}<Box component="form" onSubmit={submit} className="field-stack">{criteria.map((criterion) => <Stack key={criterion.slug} direction="row" alignItems="center" justifyContent="space-between" spacing={1}><Typography>{criterion.name}</Typography><TextField select size="small" label={`Puntaje: ${criterion.name}`} value={ratings[criterion.slug] ?? 3} onChange={(event) => setRatings((current) => ({ ...current, [criterion.slug]: Number(event.target.value) }))}>{[1, 2, 3, 4, 5].map((n) => <MenuItem key={n} value={n}>{"★".repeat(n)} {n}/5</MenuItem>)}</TextField></Stack>)}<TextField label="Comentario general" multiline minRows={3} required value={comment} onChange={(event) => setComment(event.target.value)} /><VisibilityField value={visibility} onChange={changeVisibility} disabled={busy} helperText="Pública: puede aparecer en tu perfil, el feed y la ficha del restaurante; solo admite fotos públicas. Privada: solo tú la ves en tu perfil y puede incluir tus fotos privadas." /><Box component="section" aria-labelledby="evaluation-photos-heading"><Stack spacing={1.5}><Box><Typography id="evaluation-photos-heading" variant="h2" fontSize="1.25rem">Asociar fotos (opcional)</Typography><Typography variant="body2" color="text.secondary">Elige fotos tuyas del menú o de las instalaciones de este restaurante. {selectedPhotoIds.length}/20 seleccionadas.</Typography></Box>{galleryState.status === "loading" && <BusyState label="Cargando tus fotos del restaurante…" />}{galleryState.status === "error" && <Alert severity="error">No se pudieron cargar tus fotos. {galleryState.error}</Alert>}{galleryState.status === "empty" && <Alert severity="info">Aún no tienes fotos propias del menú o de las instalaciones para asociar.</Alert>}{galleryState.status === "ready" && <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 1 }}>{gallery.map((photo) => { const selected = selectedPhotoIds.includes(photo.id); const blockedByVisibility = visibility === "public" && photo.visibility === "private"; const atLimit = !selected && selectedPhotoIds.length >= 20; return <Card key={photo.id} variant="outlined" sx={{ opacity: blockedByVisibility ? 0.65 : 1 }}><Box component="img" src={photo.content_url} alt={photo.caption || (photo.kind === "menu" ? "Foto del menú" : "Foto de las instalaciones")} sx={{ display: "block", width: "100%", aspectRatio: "1", objectFit: "cover" }} /><CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}><FormControlLabel sx={{ m: 0, alignItems: "flex-start" }} control={<Checkbox checked={selected} onChange={() => togglePhoto(photo)} disabled={busy || blockedByVisibility || atLimit} inputProps={{ "aria-label": `Asociar foto: ${photo.caption || (photo.kind === "menu" ? "menú" : "instalaciones")}` }} />} label={<Stack><Typography variant="body2">{photo.kind === "menu" ? "Menú" : "Instalaciones"}</Typography>{photo.visibility === "private" && <Typography variant="caption" color="text.secondary">Privada</Typography>}</Stack>} /></CardContent></Card>; })}</Box>}{selectionError && <Alert severity="warning">{selectionError}</Alert>}</Stack></Box><Button variant="contained" type="submit" disabled={busy || !criteria.length}>{busy ? "Publicando…" : "Evaluar"}</Button></Box></Stack></Container>;
 }
 
+/** Crea una reseña para la foto de plato seleccionada. */
 function ReviewPhotoPage() {
   const { api } = useSession();
   const { id } = useParams();
@@ -817,10 +871,13 @@ function ReviewPhotoPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => { const controller = new AbortController(); api.photo(id, { signal: controller.signal }).then((value) => { if (!controller.signal.aborted) { setPhoto(value); setVisibility(value.visibility); } }).catch((e) => !controller.signal.aborted && setError(e.message)); return () => controller.abort(); }, [api, id]);
+  /** Publica la reseña de la foto y vuelve a su vista de detalle. */
+
   const submit = async (event) => { event.preventDefault(); setBusy(true); setError(""); try { await api.createReview({ photo_id: id, rating, text, visibility }); navigate(`/photos/${id}`, { replace: true }); } catch (e) { setError(e.message); } finally { setBusy(false); } };
   return <Container maxWidth="sm" className="page-content"><Stack spacing={2}><Typography variant="h1">Reseñar {photo?.dish_name || "plato"}</Typography>{error && <Alert severity="error">{error}</Alert>}{photo?.content_url && <Box component="img" className="activity-photo" src={photo.content_url} alt={photo.caption || photo.dish_name || "Foto del plato"} />}<Box component="form" onSubmit={submit} className="field-stack"><TextField label="Cuéntanos tu experiencia" multiline minRows={3} required value={text} onChange={(e) => setText(e.target.value)} /><TextField select label="Calificación" value={rating} onChange={(e) => setRating(Number(e.target.value))}>{[1, 2, 3, 4, 5].map((n) => <MenuItem key={n} value={n}>{"★".repeat(n)} {n}/5</MenuItem>)}</TextField><VisibilityField value={visibility} onChange={setVisibility} disabled={busy || !photo} options={photo?.visibility === "private" ? ["private"] : ["public", "private"]} helperText={photo?.visibility === "private" ? "Esta foto es privada, así que la reseña también debe ser privada y solo tú podrás verla en tu perfil." : "Pública: puede aparecer en tu perfil, el feed y la ficha del restaurante. Privada: solo tú la ves en tu perfil."} /><Button type="submit" variant="contained" disabled={busy || !photo}>{busy ? "Publicando…" : "Publicar reseña"}</Button></Box></Stack></Container>;
 }
 
+/** Busca restaurantes incrementalmente y coordina filtros, ubicación y mapa. */
 function ExplorePage() {
   const { api } = useSession();
   const navigate = useNavigate();
@@ -865,10 +922,14 @@ function ExplorePage() {
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [api, query, searchVersion]);
+  /** Solicita la ubicación solo tras la acción de la persona y comunica si el permiso falla. */
+
   const locate = () => {
     if (!navigator.geolocation) { setState({ status: "error", items: [], error: "Este navegador no permite consultar la ubicación." }); return; }
     navigator.geolocation.getCurrentPosition(({ coords }) => { setCoordinates({ latitude: coords.latitude, longitude: coords.longitude }); setMapCenter({ lat: coords.latitude, lng: coords.longitude }); setLocationMode("current"); }, () => { setCoordinates(null); setState({ status: "error", items: [], error: "Sin permiso de ubicación: activa el permiso o busca por nombre." }); }, { enableHighAccuracy: true, timeout: 10000 });
   };
+  /** Consulta restaurantes por estilo y radio desde las coordenadas autorizadas. */
+
   const searchNearby = async () => {
     setNextCursor(null);
     setState({ status: "loading", items: [], error: "" });
@@ -880,6 +941,8 @@ function ExplorePage() {
       setMapVisible(true);
     } catch (error) { setState({ status: "error", items: [], error: error.message }); }
   };
+  /** Pide la siguiente página de restaurantes para el término actual. */
+
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     const term = query.trim();
@@ -898,11 +961,16 @@ function ExplorePage() {
       if (moreControllerRef.current === controller) { moreControllerRef.current = null; setLoadingMore(false); }
     }
   };
+  // Repite explícitamente la búsqueda actual si el formulario se envía.
+
   const submitSearch = (event) => { event.preventDefault(); if (query.trim().length >= 2) setSearchVersion((version) => version + 1); };
+  // Sustituye la lista visible con los restaurantes del área actual del mapa.
+
   const acceptMapResults = (items) => { setNextCursor(null); setState({ status: items.length ? "ready" : "empty", items, error: "" }); };
   return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1" className="page-heading">Explorar</Typography><Box component="form" onSubmit={submitSearch} className="field-stack"><TextField label="Buscar restaurante por nombre" value={query} onChange={(e) => setQuery(e.target.value)} helperText="Escribe al menos dos caracteres; los resultados se actualizan mientras escribes." /><Button type="submit" variant="contained" disabled={query.trim().length < 2}>Buscar</Button></Box><Button onClick={() => setAdvanced((value) => !value)}>{advanced ? "Ocultar búsqueda avanzada" : "Búsqueda avanzada"}</Button>{advanced && <Card><CardContent><Stack spacing={2}><FormControl fullWidth><Typography variant="body2">Estilos de comida</Typography><Select multiple value={styles} onChange={(e) => setStyles(e.target.value)}>{catalogue.map((style) => <MenuItem key={style.slug} value={style.slug}>{style.name}</MenuItem>)}</Select></FormControl><Typography>Ubicación: {locationMode === "current" ? "mi ubicación actual" : "dirección añadida"}</Typography><Button onClick={locate}>Usar mi ubicación actual</Button><TextField label="Dirección" disabled={!coordinates} helperText="La búsqueda por dirección requiere geocodificación; por ahora usa tu ubicación actual." /><Typography>Radio: {radius} km</Typography><Slider min={1} max={50} value={radius} onChange={(_, value) => setRadius(value)} aria-label="Radio de búsqueda en kilómetros" /><Button variant="contained" disabled={!coordinates} onClick={searchNearby}>Buscar cerca</Button></Stack></CardContent></Card>}<Button variant="outlined" onClick={() => setMapVisible((visible) => !visible)}>{mapVisible ? "Ocultar mapa" : "Explorar el mapa"}</Button>{mapVisible && <GoogleRestaurantMap api={api} restaurants={state.items} center={mapCenter} onBoundsResults={acceptMapResults} onOpenRestaurant={(id) => navigate(`/restaurants/${id}`)} />}{state.status === "loading" && <BusyState label="Buscando restaurantes…" />}{state.status === "empty" && <Alert severity="info">Sin resultados.</Alert>}{state.status === "error" && <Alert severity="warning">{state.error}</Alert>}{state.items.map((restaurant) => <Card key={restaurant.id} onClick={() => navigate(`/restaurants/${restaurant.id}`)} sx={{ cursor: "pointer" }}><CardContent><Typography variant="h3">{restaurant.name}</Typography><Typography color="text.secondary">{restaurant.address}{restaurant.distance_m ? ` · ${(restaurant.distance_m / 1000).toFixed(1)} km` : ""}</Typography><Typography>{restaurant.cuisine_styles?.map((style) => style.name).join(" · ")}</Typography></CardContent></Card>)}{nextCursor && <Button variant="outlined" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Cargando…" : "Cargar más restaurantes"}</Button>}</Stack></Container>;
 }
 
+/** Muestra el perfil propio o ajeno y permite seguir a otra persona. */
 function ProfilePage() {
   const { api } = useSession();
   const { handle } = useParams();
@@ -912,10 +980,13 @@ function ProfilePage() {
   const [following, setFollowing] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => { const controller = new AbortController(); setProfile(null); Promise.all([api.profile(handle, { signal: controller.signal }), api.userActivity(handle, { signal: controller.signal })]).then(([person, activity]) => { if (!controller.signal.aborted) { setProfile(person); setItems(activity.items || []); } }).catch((e) => !controller.signal.aborted && setError(e.message)); return () => controller.abort(); }, [api, handle]);
+  /** Alterna el seguimiento del perfil ajeno desde su página. */
+
   const toggleFollow = async () => { setBusy(true); try { if (following || profile.viewer?.following) await api.unfollowUser(handle); else await api.followUser(handle); setFollowing(!(following || profile.viewer?.following)); } catch (e) { setError(e.message); } finally { setBusy(false); } };
   return <Container maxWidth="md" className="page-content"><Stack spacing={2}>{error && <Alert severity="error">{error}</Alert>}{!profile && !error && <BusyState label="Cargando perfil…" />}{profile && <><Typography variant="h1">@{profile.handle}</Typography><Typography>{profile.name} · {profile.nationality?.name || ""}</Typography><Typography>{profile.counters?.followers} seguidores · {profile.counters?.following} siguiendo</Typography>{profile.viewer?.is_self && <Alert severity="info">En tu perfil puedes ver tu actividad pública y privada. Las entradas privadas solo son visibles para ti.</Alert>}{!profile.viewer?.is_self && <Button variant="contained" disabled={busy} onClick={toggleFollow}>{(following || profile.viewer?.following) ? "Dejar de seguir" : "Seguir"}</Button>}{items.length === 0 ? <Alert severity="info">Sin publicaciones para mostrar.</Alert> : items.map((activity, index) => <ActivityCard key={`${activity.type}-${activity.published_at}-${index}`} activity={activity} offline={false} photoUrls={new Map()} showVisibility={Boolean(profile.viewer?.is_self)} />)}</>}</Stack></Container>;
 }
 
+/** Combina preferencias Push con búsqueda incremental y seguimiento de personas. */
 function NotificationsPage() {
   const { api, state: session } = useSession();
   const currentUserId = session.session?.user?.id;
@@ -946,7 +1017,11 @@ function NotificationsPage() {
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [api, currentUserId, query, searchVersion]);
+  // Reejecuta la búsqueda actual de personas al enviar el formulario.
+
   const search = (event) => { event.preventDefault(); if (query.trim().length >= 2) setSearchVersion((version) => version + 1); };
+  /** Sigue o deja de seguir una persona desde resultados y refleja el cambio al instante. */
+
   const toggleFollow = async (person) => {
     if (person.id === currentUserId) return;
     if (busyFollowIds.has(person.id)) return;
@@ -965,6 +1040,8 @@ function NotificationsPage() {
       setBusyFollowIds((current) => { const next = new Set(current); next.delete(person.id); return next; });
     }
   };
+  /** Anexa la siguiente página de usuarios sin incluir al usuario actual. */
+
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     const term = query.trim(); const controller = new AbortController(); moreControllerRef.current = controller; setLoadingMore(true);
@@ -981,6 +1058,7 @@ function NotificationsPage() {
   return <Container maxWidth="md" className="page-content"><Stack spacing={2}><Typography variant="h1">Notificaciones</Typography><PushPreferences /><Typography variant="h2">Buscar personas</Typography><Box component="form" onSubmit={search} className="field-stack"><TextField label="Buscar por @handle" value={query} onChange={(e) => setQuery(e.target.value)} required inputProps={{ minLength: 2 }} helperText="Los resultados aparecen mientras escribes; ingresa al menos dos caracteres." /><Button variant="contained" type="submit" disabled={query.trim().length < 2}>Buscar</Button></Box>{state.status === "loading" && <BusyState label="Buscando personas…" />}{state.status === "empty" && <Alert severity="info">Sin resultados para @{query}.</Alert>}{state.status === "error" && <Alert severity="error">{state.error}</Alert>}{followError && <Alert severity="error">{followError}</Alert>}{state.users.map((person) => <Card key={person.id}><CardContent><Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}><Box component={RouterLink} to={`/profile/${person.handle}`} sx={{ color: "inherit", textDecoration: "none", flex: 1, minWidth: 0 }}><Typography variant="h3">@{person.handle}</Typography><Typography color="text.secondary">{person.name}</Typography></Box><Button variant={person.following ? "outlined" : "contained"} onClick={() => toggleFollow(person)} disabled={person.id === currentUserId || busyFollowIds.has(person.id)}>{busyFollowIds.has(person.id) ? "Actualizando…" : person.following ? "Dejar de seguir" : "Seguir"}</Button></Stack></CardContent></Card>)}{nextCursor && <Button variant="outlined" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Cargando…" : "Cargar más personas"}</Button>}</Stack></Container>;
 }
 
+/** Carga una vista direccionable de actividad y, para fotos, su conversación paginada. */
 function ActivityPage({ activityType }) {
   const { api, state: session } = useSession();
   const { id } = useParams();
@@ -1055,6 +1133,8 @@ function ActivityPage({ activityType }) {
     };
   }, [api, id, type]);
 
+  /** Publica un comentario o una respuesta y actualiza el thread visible. */
+
   const submitComment = async (event) => {
     event.preventDefault(); setCommentBusy(true); setCommentError("");
     try {
@@ -1075,6 +1155,8 @@ function ActivityPage({ activityType }) {
     } catch (error) { setCommentError(error.message); }
     finally { setCommentBusy(false); }
   };
+
+  /** Carga la siguiente página de comentarios principales de la fotografía. */
 
   const loadMoreThreads = async () => {
     if (!threadsCursor || threadsPageControllerRef.current) return;
@@ -1101,6 +1183,8 @@ function ActivityPage({ activityType }) {
       }
     }
   };
+
+  /** Carga y deduplica más respuestas del thread indicado. */
 
   const loadMoreReplies = async (thread) => {
     const commentId = thread.comment.id;
@@ -1171,6 +1255,7 @@ function ActivityPage({ activityType }) {
   );
 }
 
+/** Informa que la URL no existe y ofrece volver al feed. */
 function NotFoundPage() {
   return (
     <Container maxWidth="sm" className="page-content">
@@ -1182,6 +1267,7 @@ function NotFoundPage() {
   );
 }
 
+/** Declara las rutas públicas, el área protegida y las vistas de la aplicación. */
 export default function App() {
   return (
     <Routes>

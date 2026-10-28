@@ -4,12 +4,14 @@ import { loadGoogleMaps } from "./google-maps.js";
 
 const DEFAULT_CENTER = { lat: -33.4489, lng: -70.6693 };
 
+// Evita repetir la consulta si el área nueva ya está cubierta por la última respuesta.
 function containsBounds(outer, inner) {
   const sw = outer.getSouthWest(); const ne = outer.getNorthEast();
   const isw = inner.getSouthWest(); const ine = inner.getNorthEast();
   return sw.lat() <= isw.lat() && ne.lat() >= ine.lat() && sw.lng() <= isw.lng() && ne.lng() >= ine.lng();
 }
 
+/** Muestra Google Maps y solicita restaurantes al detenerse el mapa, con espera y cancelación. */
 export default function GoogleRestaurantMap({ api, restaurants = [], onOpenRestaurant, center, onBoundsResults }) {
   const elementRef = useRef(null); const mapRef = useRef(null); const markersRef = useRef(new Map());
   const infoRef = useRef(null); const fetchedBoundsRef = useRef(null); const requestIdRef = useRef(0);

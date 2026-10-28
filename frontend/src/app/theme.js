@@ -2,6 +2,7 @@ import { createTheme } from "@mui/material/styles";
 
 // Consolidate the local stylesheet's green, terracotta, warm surfaces,
 // Inter body type and Georgia display type into the single MUI theme.
+// Theme único de MUI derivado de la paleta clara, verde/azul y tipografía del prototipo.
 export const theme = createTheme({
   palette: {
     mode: "light",
