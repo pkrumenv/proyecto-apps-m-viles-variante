@@ -17,7 +17,6 @@ import { useNavigate } from "react-router-dom";
 import { useSession } from "./session-context.jsx";
 import { loadGoogleMaps } from "./google-maps.js";
 
-/** Permite registrar un restaurante tras geocodificar su dirección y detectar duplicados. */
 export default function CreateRestaurantPage() {
   const { api } = useSession();
   const navigate = useNavigate();
@@ -34,8 +33,6 @@ export default function CreateRestaurantPage() {
       .catch((cause) => !controller.signal.aborted && setError(cause.message));
     return () => controller.abort();
   }, [api]);
-
-  // Geocodifica la dirección, crea el restaurante y abre la ficha o informa un duplicado.
 
   const submit = async (event) => {
     event.preventDefault();

@@ -8,7 +8,6 @@ import "./app/app.css";
 import { SessionProvider } from "./app/session-context.jsx";
 import { theme } from "./app/theme.js";
 
-/** Convierte mensajes NAVIGATE del service worker en navegación segura de React Router. */
 function ServiceWorkerNavigation() {
   const navigate = useNavigate();
 
@@ -31,7 +30,6 @@ function ServiceWorkerNavigation() {
   return null;
 }
 
-/** Monta los proveedores globales y la aplicación dentro del router. */
 function Root() {
   return (
     <StrictMode>

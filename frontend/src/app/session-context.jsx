@@ -15,7 +15,6 @@ const SessionContext = createContext(null);
 
 const initialState = Object.freeze({ status: "loading", session: null, message: null });
 
-/** Comparte sesión y API, valida identidad inicial y limpia recursos al salir. */
 export function SessionProvider({ children }) {
   const [state, setState] = useState(initialState);
   const unauthorizedHandler = useRef(() => {});
@@ -27,14 +26,10 @@ export function SessionProvider({ children }) {
     [],
   );
 
-  // Devuelve a estado anónimo cuando una solicitud protegida responde 401.
-
   const invalidate = useCallback((message = "Tu sesión caducó. Inicia sesión nuevamente.") => {
     setState({ status: "anonymous", session: null, message });
   }, []);
   unauthorizedHandler.current = invalidate;
-
-  // Acepta la identidad confirmada y elimina la copia offline de otras cuentas.
 
   const acceptSession = useCallback(async (session) => {
     if (session?.user?.id) {
@@ -47,8 +42,6 @@ export function SessionProvider({ children }) {
     setState({ status: "authenticated", session, message: null });
     return session;
   }, []);
-
-  // Verifica la sesión y recupera el último feed local únicamente si falla la red.
 
   const refreshSession = useCallback(async ({ signal } = {}) => {
     setState((current) => ({ ...current, status: "loading", message: null }));
@@ -91,8 +84,6 @@ export function SessionProvider({ children }) {
     return () => controller.abort();
   }, [refreshSession]);
 
-  // Inicia sesión y vuelve a consultar al backend antes de autenticar la interfaz.
-
   const login = useCallback(async (credentials) => {
     setState({ status: "loading", session: null, message: null });
     try {
@@ -104,8 +95,6 @@ export function SessionProvider({ children }) {
       throw error;
     }
   }, [acceptSession, api]);
-
-  // Revoca sesión, baja Push y borra los datos locales de la cuenta activa.
 
   const logout = useCallback(async () => {
     const userId = state.session?.user?.id;
@@ -170,8 +159,6 @@ export function SessionProvider({ children }) {
     setState({ status: "anonymous", session: null, message: "Sesión cerrada." });
   }, [api, state.session]);
 
-  // Expone una única instancia del estado y las acciones comunes a todas las rutas.
-
   const value = useMemo(
     () => ({ state, api, login, logout, invalidate, refreshSession }),
     [api, invalidate, login, logout, refreshSession, state],
@@ -180,7 +167,6 @@ export function SessionProvider({ children }) {
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
-/** Devuelve el contexto de sesión; falla pronto si se usa fuera del proveedor. */
 export function useSession() {
   const value = useContext(SessionContext);
   if (!value) throw new Error("useSession debe usarse dentro de SessionProvider");
